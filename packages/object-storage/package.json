@@ -11,7 +11,7 @@
     "lint": "oxlint . --report-unused-disable-directives",
     "lint:types": "oxlint --type-aware .",
     "test": "vitest run",
-    "test:contract": "S3_CONTRACT_TESTS=true node ../../tooling/scripts/run-with-env.mjs vitest run src/storage.contract.test.ts",
+    "test:contract": "dotenv -e ../../.env -v S3_CONTRACT_TESTS=true -- vitest run src/storage.contract.test.ts",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {

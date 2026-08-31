@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@changesets/cli": "catalog:",
+    "dotenv-cli": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "oxlint-tsgolint": "catalog:",

@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "check:runtime": "node src/check-runtime.ts",
-    "test": "node --test run-with-env.test.mjs",
     "typecheck": "tsc -b",
     "lint": "oxlint . --report-unused-disable-directives",
     "lint:types": "oxlint --type-aware ."

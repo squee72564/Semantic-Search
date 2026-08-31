@@ -8,7 +8,7 @@
     "./client": "./src/client.ts"
   },
   "scripts": {
-    "auth:generate": "node ../../tooling/scripts/run-with-env.mjs better-auth generate --config ./script/auth-cli.ts --output ../db/src/schema/auth.ts --yes && pnpm --dir ../.. exec oxfmt packages/db/src/schema/auth.ts",
+    "auth:generate": "dotenv -e ../../.env -- better-auth generate --config ./script/auth-cli.ts --output ../db/src/schema/auth.ts --yes && pnpm --dir ../.. exec oxfmt packages/db/src/schema/auth.ts",
     "typecheck": "tsc -b",
     "lint": "oxlint . --report-unused-disable-directives",
     "lint:types": "oxlint --type-aware .",

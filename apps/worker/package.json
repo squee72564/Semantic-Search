@@ -5,7 +5,7 @@
   "type": "module",
   "exports": {},
   "scripts": {
-    "dev": "node ../../tooling/scripts/run-with-env.mjs tsx watch src/index.ts",
+    "dev": "dotenv -e ../../.env -- tsx watch src/index.ts",
     "build": "tsdown",
     "start": "node --enable-source-maps dist/index.js",
     "typecheck": "tsc -b",
