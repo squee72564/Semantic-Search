@@ -28,8 +28,6 @@ export default defineConfig({
     "**/drizzle/**",
     "**/app/components/ui/**",
     "**/node_modules/**",
-    "**/playwright-report/**",
-    "**/test-results/**",
     "**/.react-router/**",
     "**/.turbo/**",
   ],
@@ -39,7 +37,7 @@ export default defineConfig({
   },
   overrides: [
     {
-      files: ["**/*.test.{ts,tsx}", "**/e2e/**/*.{ts,tsx}"],
+      files: ["**/*.test.{ts,tsx}"],
       env: {
         browser: true,
         node: true,

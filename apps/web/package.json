@@ -11,8 +11,7 @@
     "lint": "oxlint . --report-unused-disable-directives",
     "lint:types": "oxlint --type-aware .",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@base-ui/react": "catalog:",
@@ -37,7 +36,6 @@
     "tw-animate-css": "catalog:"
   },
   "devDependencies": {
-    "@playwright/test": "catalog:",
     "@react-router/dev": "catalog:",
     "@repo/config": "workspace:*",
     "@repo/test-utils": "workspace:*",

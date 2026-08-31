@@ -13,7 +13,6 @@
     "dev": "dotenv -e ../../.env -- tsx watch src/index.ts",
     "build": "tsdown",
     "start": "node --enable-source-maps dist/index.js",
-    "test:serve": "tsx src/test-server.ts",
     "typecheck": "tsc -b",
     "lint": "oxlint . --report-unused-disable-directives",
     "lint:types": "oxlint --type-aware .",

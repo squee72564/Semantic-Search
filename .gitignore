@@ -14,12 +14,9 @@ Thumbs.db
 .turbo
 .vite
 build
-blob-report
 coverage
 dist
 node_modules
-playwright-report
-test-results
 
 # React Router generated types
 .react-router

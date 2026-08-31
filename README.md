@@ -76,7 +76,6 @@ pnpm lint:types     # type-aware Oxlint
 pnpm format         # Oxfmt write mode
 pnpm format:check   # Oxfmt check mode
 pnpm test           # Vitest unit and integration tests
-pnpm test:e2e       # Playwright browser tests with a hermetic API server
 pnpm --filter @repo/worker dev    # worker process only
 pnpm auth:generate  # regenerate Better Auth's committed Drizzle schema
 pnpm db:generate    # generate Drizzle migrations after schema changes

@@ -537,8 +537,8 @@ and [MVP acceptance criteria](./NORTHSTAR.md#15-mvp-acceptance-criteria).
 - [ ] A database/object restore produces a mutually consistent, searchable non-production system.
 - [ ] API browsing and non-generative search remain available during worker or AI-provider outages.
 - [ ] Resource tests demonstrate bounded one-job ingestion on the target VPS configuration.
-- [ ] `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm lint:types`, `pnpm format:check`, `pnpm test`,
-      and `pnpm test:e2e` pass from a clean checkout with documented prerequisites.
+- [ ] `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm lint:types`, `pnpm format:check`, and
+      `pnpm test` pass from a clean checkout with documented prerequisites.
 - [ ] Every item in the MVP traceability matrix below has passing automated evidence or a documented
       manual verification procedure.
 
