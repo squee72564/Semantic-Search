@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import { type WorkspaceRepository } from "@repo/db";
+import { type DocumentRepository, type WorkspaceRepository } from "@repo/db";
 import { createHealthRoutes } from "./routes/v1/health.js";
+import { createDocumentRoutes, createWorkspaceDocumentRoutes } from "./routes/v1/document.js";
 import { createWorkspaceRoutes } from "./routes/v1/workspace.js";
 import type { AppVariables } from "./lib/context.js";
 import { type ApiEnv } from "@repo/env/api";
@@ -14,12 +15,13 @@ import { type ApiAuthentication, createAuthenticationMiddleware } from "./lib/au
 
 export interface AppDependencies {
   auth: ApiAuthentication;
+  documents: DocumentRepository;
   workspaces: WorkspaceRepository;
   env: ApiEnv;
   logger: Logger;
 }
 
-export function createApp({ auth, workspaces, env, logger }: AppDependencies) {
+export function createApp({ auth, documents, workspaces, env, logger }: AppDependencies) {
   const app = new Hono<{ Variables: AppVariables }>();
 
   app.use("*", createRequestIdMiddleware());
@@ -37,7 +39,12 @@ export function createApp({ auth, workspaces, env, logger }: AppDependencies) {
 
   const routes = app
     .route("/health", createHealthRoutes())
-    .route("/workspaces", createWorkspaceRoutes(workspaces, requireAuth()));
+    .route("/workspaces", createWorkspaceRoutes(workspaces, requireAuth()))
+    .route("/documents", createDocumentRoutes(documents, requireAuth()))
+    .route(
+      "/workspaces/:workspaceId/documents",
+      createWorkspaceDocumentRoutes(documents, workspaces, requireAuth()),
+    );
 
   routes.onError(createErrorHandler(env, logger));
   routes.notFound(createNotFoundHandler(env));

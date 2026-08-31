@@ -1,5 +1,5 @@
 import { createAuth } from "@repo/auth";
-import { createDatabase, createWorkspaceRepository } from "@repo/db";
+import { createDatabase, createWorkspaceRepository, createDocumentRepository } from "@repo/db";
 import { readApiEnv } from "@repo/env/api";
 import { createApp } from "./app.js";
 import { createLogger, flushLogger, type Logger } from "./lib/logger.js";
@@ -27,6 +27,7 @@ async function main(): Promise<void> {
 
     const app = createApp({
       auth,
+      documents: createDocumentRepository(db),
       workspaces: createWorkspaceRepository(db),
       env,
       logger,
