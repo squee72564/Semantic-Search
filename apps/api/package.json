@@ -1,0 +1,45 @@
+{
+  "name": "@repo/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    }
+  },
+  "scripts": {
+    "dev": "node ../../tooling/scripts/run-with-env.mjs tsx watch src/index.ts",
+    "build": "tsdown",
+    "start": "node --enable-source-maps dist/index.js",
+    "test:serve": "tsx src/test-server.ts",
+    "typecheck": "tsc -b",
+    "lint": "oxlint . --report-unused-disable-directives",
+    "lint:types": "oxlint --type-aware .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@hono/node-server": "catalog:",
+    "@hono/zod-validator": "catalog:",
+    "@repo/auth": "workspace:*",
+    "@repo/db": "workspace:*",
+    "@repo/env": "workspace:*",
+    "better-auth": "catalog:",
+    "hono": "catalog:",
+    "http-status-codes": "catalog:",
+    "pino": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@repo/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "pino-pretty": "catalog:",
+    "tsdown": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
