@@ -11,6 +11,11 @@ export interface DocumentCursor {
   id: string;
 }
 
+export interface WorkspaceDocumentCursor {
+  attachedAt: Date;
+  id: string;
+}
+
 export interface CreateDocumentInput {
   customMetadata?: Record<string, unknown> | undefined;
   description?: string | null | undefined;
@@ -40,6 +45,22 @@ export interface ListDocumentsInput {
 
 export type DocumentPage = CursorPage<Document, DocumentCursor>;
 
+export interface WorkspaceDocumentListItem {
+  attachment: WorkspaceDocument;
+  document: Document;
+}
+
+export interface ListWorkspaceDocumentsInput {
+  cursor?: WorkspaceDocumentCursor | undefined;
+  limit: number;
+  status?: DocumentStatus | undefined;
+  tags?: readonly string[] | undefined;
+  userId: string;
+  workspaceId: string;
+}
+
+export type WorkspaceDocumentPage = CursorPage<WorkspaceDocumentListItem, WorkspaceDocumentCursor>;
+
 export interface AttachDocumentInput {
   displayTitle?: string | null | undefined;
   tags?: readonly string[] | undefined;
@@ -62,6 +83,7 @@ export interface DocumentRepository {
   findById: (userId: string, id: string) => Promise<Document | null>;
   findBySha256: (userId: string, sha256: string) => Promise<Document | null>;
   list: (input: ListDocumentsInput) => Promise<DocumentPage>;
+  listWorkspaceDocuments: (input: ListWorkspaceDocumentsInput) => Promise<WorkspaceDocumentPage>;
   markDeletingIfUnattached: (userId: string, id: string) => Promise<Document | null>;
   updateAttachment: (
     userId: string,
@@ -221,6 +243,47 @@ export function createDocumentRepository(db: Database): DocumentRepository {
         .orderBy(desc(documents.createdAt), desc(documents.id))
         .limit(input.limit + 1);
       return createCursorPage(rows, input.limit, ({ createdAt, id }) => ({ createdAt, id }));
+    },
+
+    async listWorkspaceDocuments(input) {
+      const cursorCondition = input.cursor
+        ? or(
+            lt(workspaceDocuments.attachedAt, input.cursor.attachedAt),
+            and(
+              eq(workspaceDocuments.attachedAt, input.cursor.attachedAt),
+              lt(workspaceDocuments.documentId, input.cursor.id),
+            ),
+          )
+        : undefined;
+      const normalizedTags = normalizeTags(input.tags);
+      const rows = await db
+        .select({ attachment: workspaceDocuments, document: documents })
+        .from(workspaceDocuments)
+        .innerJoin(
+          documents,
+          and(
+            eq(documents.userId, workspaceDocuments.userId),
+            eq(documents.id, workspaceDocuments.documentId),
+          ),
+        )
+        .where(
+          and(
+            eq(workspaceDocuments.userId, input.userId),
+            eq(workspaceDocuments.workspaceId, input.workspaceId),
+            input.status === undefined ? undefined : eq(documents.status, input.status),
+            normalizedTags.length === 0
+              ? undefined
+              : arrayContains(workspaceDocuments.tags, normalizedTags),
+            cursorCondition,
+          ),
+        )
+        .orderBy(desc(workspaceDocuments.attachedAt), desc(workspaceDocuments.documentId))
+        .limit(input.limit + 1);
+
+      return createCursorPage(rows, input.limit, ({ attachment }) => ({
+        attachedAt: attachment.attachedAt,
+        id: attachment.documentId,
+      }));
     },
 
     async markDeletingIfUnattached(userId, id) {

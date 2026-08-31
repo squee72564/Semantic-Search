@@ -45,12 +45,22 @@ function documentRow({
 
 function attachmentRow({
   tags = ["tax"],
+  targetDocumentId = documentId,
   targetWorkspaceId = workspaceId,
 }: {
   tags?: string[];
+  targetDocumentId?: string;
   targetWorkspaceId?: string;
 } = {}): unknown[] {
-  return [userId, targetWorkspaceId, documentId, "Workspace source", tags, attachedAt, updatedAt];
+  return [
+    userId,
+    targetWorkspaceId,
+    targetDocumentId,
+    "Workspace source",
+    tags,
+    attachedAt,
+    updatedAt,
+  ];
 }
 
 function createRecordingDatabase(responses: unknown[][][]) {
@@ -147,6 +157,80 @@ describe("Document repository", () => {
     expect(queries[0]?.sql).toContain(
       'order by "documents"."created_at" desc, "documents"."id" desc',
     );
+    expect(queries[0]?.parameters).toContain(cursorId);
+    expect(queries[0]?.parameters).toContain(3);
+  });
+
+  it("lists workspace documents with contextual attachment metadata", async () => {
+    const secondId = "00000000-0000-4000-8000-000000000004";
+    const { db, queries } = createRecordingDatabase([
+      [
+        [...attachmentRow({ tags: ["tax", "reference"] }), ...documentRow()],
+        [
+          ...attachmentRow({ tags: ["benefits"], targetDocumentId: secondId }),
+          ...documentRow({ id: secondId }),
+        ],
+      ],
+    ]);
+    const repository = createDocumentRepository(db);
+
+    await expect(
+      repository.listWorkspaceDocuments({
+        limit: 2,
+        status: "uploaded",
+        tags: [" Tax ", "REFERENCE"],
+        userId,
+        workspaceId,
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          attachment: { tags: ["tax", "reference"], workspaceId },
+          document: { id: documentId, userId },
+        },
+        {
+          attachment: { tags: ["benefits"], workspaceId },
+          document: { id: secondId, userId },
+        },
+      ],
+      nextCursor: null,
+    });
+
+    expect(queries[0]?.sql).toContain('from "workspace_documents"');
+    expect(queries[0]?.sql).toContain('inner join "documents"');
+    expect(queries[0]?.sql).toContain('"workspace_documents"."tags" @>');
+    expect(queries[0]?.sql).toContain(
+      'order by "workspace_documents"."attached_at" desc, "workspace_documents"."document_id" desc',
+    );
+    expect(queries[0]?.parameters).toContain(userId);
+    expect(queries[0]?.parameters).toContain(workspaceId);
+    expect(queries[0]?.parameters).toContain('{"tax","reference"}');
+  });
+
+  it("returns an attachment cursor after slicing workspace document results", async () => {
+    const secondId = "00000000-0000-4000-8000-000000000004";
+    const thirdId = "00000000-0000-4000-8000-000000000005";
+    const cursorId = "00000000-0000-4000-8000-000000000006";
+    const { db, queries } = createRecordingDatabase([
+      [
+        [...attachmentRow(), ...documentRow()],
+        [...attachmentRow({ targetDocumentId: secondId }), ...documentRow({ id: secondId })],
+        [...attachmentRow({ targetDocumentId: thirdId }), ...documentRow({ id: thirdId })],
+      ],
+    ]);
+    const repository = createDocumentRepository(db);
+
+    const page = await repository.listWorkspaceDocuments({
+      cursor: { attachedAt, id: cursorId },
+      limit: 2,
+      userId,
+      workspaceId,
+    });
+
+    expect(page).toMatchObject({
+      items: [{ document: { id: documentId } }, { document: { id: secondId } }],
+      nextCursor: { attachedAt, id: secondId },
+    });
     expect(queries[0]?.parameters).toContain(cursorId);
     expect(queries[0]?.parameters).toContain(3);
   });

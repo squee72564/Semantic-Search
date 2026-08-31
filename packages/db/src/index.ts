@@ -8,8 +8,12 @@ export {
   type DocumentPage,
   type DocumentRepository,
   type ListDocumentsInput,
+  type ListWorkspaceDocumentsInput,
   type UpdateDocumentMetadataInput,
   type UpdateWorkspaceDocumentInput,
+  type WorkspaceDocumentCursor,
+  type WorkspaceDocumentListItem,
+  type WorkspaceDocumentPage,
 } from "./repositories/documents.js";
 export * as authSchema from "./schema/auth.js";
 export {
