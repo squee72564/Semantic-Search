@@ -13,8 +13,8 @@ import { mockApi } from "~/test-setup";
 const page: {
   items: typeof workspaceFixtures;
   limit: number;
-  pageInfo: { hasMore: boolean; nextCursor: string | null };
-} = { items: workspaceFixtures, limit: 20, pageInfo: { hasMore: false, nextCursor: null } };
+  pageInfo: { nextCursor: string | null };
+} = { items: workspaceFixtures, limit: 20, pageInfo: { nextCursor: null } };
 const workspaceEntries = ["/workspaces"];
 
 function Location() {
@@ -88,13 +88,13 @@ describe("Workspaces", () => {
             ? {
                 items: [workspaceFixtures[1]],
                 limit: 20,
-                pageInfo: { hasMore: false, nextCursor: null },
+                pageInfo: { nextCursor: null },
               }
             : page,
         );
       }),
     );
-    renderPage({ ...page, pageInfo: { hasMore: true, nextCursor: "next-page" } });
+    renderPage({ ...page, pageInfo: { nextCursor: "next-page" } });
     await user.click(screen.getByRole("button", { name: /Next/ }));
     expect(await screen.findByText("Product planning")).toBeInTheDocument();
     expect(screen.getByText("Page 2")).toBeInTheDocument();

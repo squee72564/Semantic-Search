@@ -42,17 +42,13 @@ export function createWorkspaceRoutes(
           ...query,
           userId: user.id,
         });
-        const lastItem = page.items.at(-1);
-        const nextCursor =
-          page.hasMore && lastItem
-            ? encodeWorkspaceCursor({ createdAt: lastItem.createdAt, id: lastItem.id })
-            : null;
+        const nextCursor = page.nextCursor === null ? null : encodeWorkspaceCursor(page.nextCursor);
 
         return context.json(
           {
             items: page.items,
             limit: query.limit,
-            pageInfo: { hasMore: page.hasMore, nextCursor },
+            pageInfo: { nextCursor },
           },
           200,
         );

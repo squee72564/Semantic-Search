@@ -10,7 +10,7 @@ import { createQueryClient } from "~/query-client";
 const dashboardData = {
   items: workspaceFixtures,
   limit: 4,
-  pageInfo: { hasMore: false, nextCursor: null },
+  pageInfo: { nextCursor: null },
 };
 const emptyDashboardData = { ...dashboardData, items: [] };
 

@@ -13,13 +13,13 @@ import { createServerApiClient } from "~/lib/api.server";
 import { createQueryClient } from "~/query-client";
 import { workspacesQuery, type WorkspacesQueryInput } from "~/queries/workspaces";
 
-const WORKSPACE_LIMIT = 20;
+const WORKSPACE_LIMIT = 5;
 type WorkspacePage = Awaited<ReturnType<typeof loader>>;
 
 const emptyWorkspacePage: WorkspacePage = {
   items: [],
   limit: WORKSPACE_LIMIT,
-  pageInfo: { hasMore: false, nextCursor: null },
+  pageInfo: { nextCursor: null },
 };
 
 export function meta() {
@@ -108,11 +108,7 @@ export default function Workspaces({ loaderData }: { loaderData: WorkspacePage }
           type="button"
           variant="outline"
           size="sm"
-          disabled={
-            !workspaces.data.pageInfo.hasMore ||
-            !workspaces.data.pageInfo.nextCursor ||
-            workspaces.isFetching
-          }
+          disabled={!workspaces.data.pageInfo.nextCursor || workspaces.isFetching}
           onClick={nextPage}
         >
           Next <ChevronRight aria-hidden="true" />

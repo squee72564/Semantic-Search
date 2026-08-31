@@ -112,7 +112,7 @@ describe("Workspace repository", () => {
       userId,
     });
 
-    expect(page).toMatchObject({ hasMore: true });
+    expect(page).toMatchObject({ nextCursor: { createdAt, id: secondId } });
     expect(page.items).toHaveLength(2);
     expect(queries[0]?.sql).toContain('where ("workspaces"."user_id"');
     expect(queries[0]?.sql).toContain(

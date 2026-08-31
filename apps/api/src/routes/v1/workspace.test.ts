@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { AppVariables } from "../../lib/context.js";
 import { ApiError } from "../../lib/error.js";
+import { encodeWorkspaceCursor } from "../../validation/workspace.js";
 import { createWorkspaceRoutes } from "./workspace.js";
 
 type AppEnv = { Variables: AppVariables };
@@ -27,8 +28,8 @@ function createRepository(overrides: Partial<WorkspaceRepository> = {}): Workspa
     delete: vi.fn<WorkspaceRepository["delete"]>(async () => true),
     findById: vi.fn<WorkspaceRepository["findById"]>(async () => workspace),
     list: vi.fn<WorkspaceRepository["list"]>(async () => ({
-      hasMore: true,
       items: [workspace],
+      nextCursor: { createdAt, id: workspaceId },
     })),
     update: vi.fn<WorkspaceRepository["update"]>(async () => ({
       ...workspace,
@@ -82,7 +83,7 @@ describe("workspace routes", () => {
     await expect(listResponse.json()).resolves.toMatchObject({
       items: [{ id: workspaceId }],
       limit: 1,
-      pageInfo: { hasMore: true },
+      pageInfo: { nextCursor: encodeWorkspaceCursor({ createdAt, id: workspaceId }) },
     });
     expect(repository.list).toHaveBeenCalledWith({ limit: 1, userId });
 

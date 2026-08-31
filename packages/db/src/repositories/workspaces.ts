@@ -2,6 +2,7 @@ import { and, desc, eq, lt, or } from "drizzle-orm";
 
 import type { Database } from "../client.js";
 import { workspaces, type Workspace } from "../schema/workspaces.js";
+import { createCursorPage, type CursorPage } from "./pagination.js";
 
 export interface WorkspaceCursor {
   createdAt: Date;
@@ -24,10 +25,7 @@ export interface UpdateWorkspaceInput {
   name?: string | undefined;
 }
 
-export interface WorkspacePage {
-  hasMore: boolean;
-  items: Workspace[];
-}
+export type WorkspacePage = CursorPage<Workspace, WorkspaceCursor>;
 
 export interface WorkspaceRepository {
   create: (userId: string, input: CreateWorkspaceInput) => Promise<Workspace>;
@@ -90,12 +88,7 @@ export function createWorkspaceRepository(db: Database): WorkspaceRepository {
         .where(and(eq(workspaces.userId, input.userId), cursorCondition))
         .orderBy(desc(workspaces.createdAt), desc(workspaces.id))
         .limit(input.limit + 1);
-      const hasMore = rows.length > input.limit;
-
-      return {
-        hasMore,
-        items: hasMore ? rows.slice(0, input.limit) : rows,
-      };
+      return createCursorPage(rows, input.limit, ({ createdAt, id }) => ({ createdAt, id }));
     },
 
     async update(userId, id, input) {

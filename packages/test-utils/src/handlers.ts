@@ -25,7 +25,7 @@ export const apiHandlers = [
     return HttpResponse.json({
       items: workspaceFixtures.slice(0, limit),
       limit,
-      pageInfo: { hasMore: false, nextCursor: null },
+      pageInfo: { nextCursor: null },
     });
   }),
   http.post("*/workspaces", async ({ request }) => {
