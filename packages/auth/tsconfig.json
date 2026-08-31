@@ -1,0 +1,7 @@
+{
+  "extends": "@repo/config/tsconfig/node.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts", "script/**/*.ts"]
+}

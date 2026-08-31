@@ -1,0 +1,32 @@
+{
+  "name": "@repo/auth",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts"
+  },
+  "scripts": {
+    "auth:generate": "node ../../tooling/scripts/run-with-env.mjs better-auth generate --config ./script/auth-cli.ts --output ../db/src/schema/auth.ts --yes && pnpm --dir ../.. exec oxfmt packages/db/src/schema/auth.ts",
+    "typecheck": "tsc -b",
+    "lint": "oxlint . --report-unused-disable-directives",
+    "lint:types": "oxlint --type-aware .",
+    "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage --passWithNoTests"
+  },
+  "dependencies": {
+    "@repo/db": "workspace:*",
+    "@repo/env": "workspace:*",
+    "better-auth": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@repo/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "auth": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
