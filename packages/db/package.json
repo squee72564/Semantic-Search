@@ -1,0 +1,31 @@
+{
+  "name": "@repo/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -b",
+    "lint": "oxlint . --report-unused-disable-directives",
+    "lint:types": "oxlint --type-aware .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "db:generate": "node ../../tooling/scripts/run-with-env.mjs drizzle-kit generate",
+    "db:migrate": "node ../../tooling/scripts/run-with-env.mjs drizzle-kit migrate",
+    "db:studio": "node ../../tooling/scripts/run-with-env.mjs drizzle-kit studio"
+  },
+  "dependencies": {
+    "drizzle-orm": "catalog:",
+    "postgres": "catalog:"
+  },
+  "devDependencies": {
+    "@repo/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "drizzle-kit": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

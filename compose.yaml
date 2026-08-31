@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg18-trixie
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-squee_online}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-}"
+      POSTGRES_USER: "${POSTGRES_USER:-squee_online}"
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready --username "$${POSTGRES_USER}" --dbname "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-18-data:/var/lib/postgresql
+
+volumes:
+  postgres-18-data:
