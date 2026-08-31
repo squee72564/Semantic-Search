@@ -168,7 +168,7 @@ vertical slice.
       the API image excludes worker-only OCR, PDF-processing, and embedding dependencies.
 - [x] The worker container runs as non-root with a read-only root filesystem and a size-limited,
       disposable scratch mount.
-- [ ] The repository-wide typecheck, lint, formatting, and test commands pass.
+- [x] The repository-wide typecheck, lint, formatting, and test commands pass.
 
 **Exit gate:** The application starts against pgvector-enabled PostgreSQL, validates a dedicated
 Hetzner development configuration, and has stable fixtures and worker runtime boundaries for the next
@@ -203,7 +203,7 @@ used by every document and retrieval operation.
 - [x] Validation and route tests cover invalid input, authentication failure, not found, and successful CRUD.
 - [x] Component tests cover workspace listing, creation, URL navigation, renaming, deletion, errors,
       pagination, dashboard previews, and nested sidebar state.
-- [ ] Browser tests cover workspace CRUD and session preservation.
+- [x] Browser tests cover workspace CRUD and session preservation.
 - [x] Existing security middleware and problem-response tests remain passing.
 
 **Exit gate:** An authenticated user can create, list, open, rename, and delete only their own
@@ -230,15 +230,15 @@ workspace organization.
       receives claim/heartbeat/progress/completion/failure operations. Do not inject one oversized queue
       interface into both runtimes or create a separate `@repo/jobs` package until another implementation
       or substantial provider-neutral state machine justifies it.
-- [ ] Implement the narrow `ObjectStorage` interface from the North Star with an AWS SDK v3 adapter;
+- [x] Implement the narrow `ObjectStorage` interface from the North Star with an AWS SDK v3 adapter;
       SDK types must not escape the adapter. Both applications create independent adapter instances, and
       injection sites may use narrower `Pick<ObjectStorage, ...>` capabilities where useful without
       multiplying packages.
-- [ ] Implement `put`, `head`, ranged `get`, prefix `list`, and idempotent `delete` against private
+- [x] Implement `put`, `head`, ranged `get`, prefix `list`, and idempotent `delete` against private
       virtual-hosted Hetzner buckets.
-- [ ] Add an opt-in contract suite using dedicated test credentials and a random isolated prefix. It
+- [x] Add an opt-in contract suite using dedicated test credentials and a random isolated prefix. It
       must refuse production configuration and delete only objects created by that test run.
-- [ ] Implement repositories for canonical document metadata and idempotent workspace attachments,
+- [x] Implement repositories for canonical document metadata and idempotent workspace attachments,
       including cross-user attachment rejection and workspace-specific display title/tags.
 - [ ] Implement authenticated streaming upload to bounded temporary storage with size enforcement,
       PDF signature/readability validation, and incremental SHA-256 calculation.
