@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./apps/api" },
+    { "path": "./apps/web" },
+    { "path": "./apps/worker" },
+    { "path": "./packages/auth" },
+    { "path": "./packages/db" },
+    { "path": "./packages/env" },
+    { "path": "./packages/object-storage" },
+    { "path": "./packages/test-utils" },
+    { "path": "./tooling/scripts" }
+  ]
+}

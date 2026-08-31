@@ -1,0 +1,19 @@
+{
+  "name": "@repo/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tsconfig/base.json": "./tsconfig/base.json",
+    "./tsconfig/node.json": "./tsconfig/node.json",
+    "./tsconfig/react.json": "./tsconfig/react.json",
+    "./vitest": "./vitest/base.ts"
+  },
+  "scripts": {
+    "lint": "oxlint . --report-unused-disable-directives",
+    "lint:types": "oxlint --type-aware ."
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
+  }
+}

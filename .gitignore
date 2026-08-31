@@ -1,0 +1,29 @@
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+
+# Local environment and package-manager state
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo
+
+# Dependencies and generated output
+.turbo
+.vite
+build
+blob-report
+coverage
+dist
+node_modules
+playwright-report
+test-results
+
+# React Router generated types
+.react-router
+
+# Drizzle migration metadata is committed; local SQLite state is not.
+packages/db/drizzle/*.sqlite
+packages/db/drizzle/*.sqlite-*
