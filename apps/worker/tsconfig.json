@@ -1,0 +1,8 @@
+{
+  "extends": "@repo/config/tsconfig/node.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.tsbuildinfo",
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "tsdown.config.ts", "vitest.config.ts"]
+}
