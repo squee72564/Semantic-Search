@@ -1,0 +1,27 @@
+{
+  "name": "@repo/object-storage",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -b",
+    "lint": "oxlint . --report-unused-disable-directives",
+    "lint:types": "oxlint --type-aware .",
+    "test": "vitest run",
+    "test:contract": "S3_CONTRACT_TESTS=true node ../../tooling/scripts/run-with-env.mjs vitest run src/storage.contract.test.ts",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "catalog:"
+  },
+  "devDependencies": {
+    "@repo/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
