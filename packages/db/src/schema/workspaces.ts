@@ -1,4 +1,4 @@
-import { relations, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { check, index, pgTable, text, timestamp, unique, uuid, varchar } from "drizzle-orm/pg-core";
 
 import { user } from "./auth.js";
@@ -21,13 +21,6 @@ export const workspaces = pgTable(
     index("workspaces_user_created_idx").on(table.userId, table.createdAt.desc(), table.id.desc()),
   ],
 );
-
-export const workspacesRelations = relations(workspaces, ({ one }) => ({
-  user: one(user, {
-    fields: [workspaces.userId],
-    references: [user.id],
-  }),
-}));
 
 export type Workspace = typeof workspaces.$inferSelect;
 export type NewWorkspace = typeof workspaces.$inferInsert;

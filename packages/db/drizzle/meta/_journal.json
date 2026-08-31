@@ -15,6 +15,13 @@
       "when": 1788134878700,
       "tag": "0001_enable-vector-extension",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788139664202,
+      "tag": "0002_add-documents",
+      "breakpoints": true
     }
   ]
 }
