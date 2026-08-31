@@ -20,6 +20,24 @@ export {
   type NewDocument,
 } from "./schema/documents.js";
 export {
+  documentProcessingStage,
+  jobAttempts,
+  jobAttemptOutcome,
+  jobKind,
+  jobs,
+  jobStatus,
+  type DocumentProcessingStage,
+  type Job,
+  type JobAttempt,
+  type JobAttemptOutcome,
+  type JobConfiguration,
+  type JobErrorDetails,
+  type JobKind,
+  type JobStatus,
+  type NewJob,
+  type NewJobAttempt,
+} from "./schema/jobs.js";
+export {
   workspaceDocuments,
   type NewWorkspaceDocument,
   type WorkspaceDocument,
