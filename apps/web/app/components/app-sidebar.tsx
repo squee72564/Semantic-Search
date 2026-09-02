@@ -1,7 +1,9 @@
-import { FolderKanban, LayoutDashboard, LogOut, Sparkles } from "lucide-react";
-import { useCallback } from "react";
+import { QueryErrorResetBoundary, useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { ChevronRight, FolderKanban, LayoutDashboard, LogOut, Sparkles } from "lucide-react";
+import { Component, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router";
 
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -11,16 +13,20 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarRail,
   useSidebar,
 } from "~/components/ui/sidebar";
+import { Spinner } from "~/components/ui/spinner";
+import { browserApiClient } from "~/lib/api.client";
+import { sidebarWorkspacesQuery } from "~/queries/workspaces";
 
-const navigation = [
-  { title: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
-  { title: "Workspaces", to: "/workspaces", icon: FolderKanban },
-];
+const navigation = [{ title: "Dashboard", to: "/dashboard", icon: LayoutDashboard }];
 
 interface AppSidebarProps {
   user: {
@@ -35,6 +41,17 @@ interface AppSidebarProps {
 export function AppSidebar({ user, error, isSigningOut, onSignOut }: AppSidebarProps) {
   const location = useLocation();
   const { isMobile, setOpenMobile } = useSidebar();
+  const [isClient, setIsClient] = useState(false);
+  const [areWorkspacesOpen, setAreWorkspacesOpen] = useState(() =>
+    location.pathname.startsWith("/workspaces/"),
+  );
+
+  useEffect(() => setIsClient(true), []);
+  useEffect(() => {
+    if (location.pathname.startsWith("/workspaces/")) {
+      setAreWorkspacesOpen(true);
+    }
+  }, [location.pathname]);
 
   const closeMobileSidebar = useCallback(() => {
     if (isMobile) {
@@ -71,10 +88,7 @@ export function AppSidebar({ user, error, isSigningOut, onSignOut }: AppSidebarP
                 <SidebarMenuItem key={item.to}>
                   <SidebarMenuButton
                     asChild
-                    isActive={
-                      location.pathname === item.to ||
-                      (item.to === "/workspaces" && location.pathname.startsWith("/workspaces/"))
-                    }
+                    isActive={location.pathname === item.to}
                     tooltip={item.title}
                   >
                     <NavLink to={item.to} onClick={closeMobileSidebar}>
@@ -84,6 +98,34 @@ export function AppSidebar({ user, error, isSigningOut, onSignOut }: AppSidebarP
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+              <Collapsible asChild open={areWorkspacesOpen} onOpenChange={setAreWorkspacesOpen}>
+                <SidebarMenuItem className="group/collapsible">
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location.pathname.startsWith("/workspaces")}
+                    tooltip="Workspaces"
+                  >
+                    <NavLink to="/workspaces" onClick={closeMobileSidebar}>
+                      <FolderKanban aria-hidden="true" />
+                      <span>Workspaces</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuAction
+                      aria-label={areWorkspacesOpen ? "Collapse workspaces" : "Expand workspaces"}
+                    >
+                      <ChevronRight
+                        className="transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 motion-reduce:transition-none"
+                        aria-hidden="true"
+                      />
+                    </SidebarMenuAction>
+                  </CollapsibleTrigger>
+                  {isClient ? <WorkspaceQueryPreloader /> : null}
+                  <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+                    {isClient ? <WorkspaceSubmenuBoundary onNavigate={closeMobileSidebar} /> : null}
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -122,4 +164,109 @@ export function AppSidebar({ user, error, isSigningOut, onSignOut }: AppSidebarP
       <SidebarRail />
     </Sidebar>
   );
+}
+
+function WorkspaceQueryPreloader() {
+  useQuery(sidebarWorkspacesQuery(browserApiClient));
+  return null;
+}
+
+function WorkspaceSubmenuBoundary({ onNavigate }: { onNavigate: () => void }) {
+  return (
+    <QueryErrorResetBoundary>
+      {({ reset }) => (
+        <WorkspaceNavigationErrorBoundary onReset={reset}>
+          <Suspense fallback={workspaceSubmenuLoadingFallback}>
+            <WorkspaceSubmenu onNavigate={onNavigate} />
+          </Suspense>
+        </WorkspaceNavigationErrorBoundary>
+      )}
+    </QueryErrorResetBoundary>
+  );
+}
+
+function WorkspaceSubmenu({ onNavigate }: { onNavigate: () => void }) {
+  const { data } = useSuspenseQuery(sidebarWorkspacesQuery(browserApiClient));
+  const location = useLocation();
+
+  return (
+    <SidebarMenuSub className="max-h-64 overflow-y-auto">
+      {data.items.length === 0 ? (
+        <SidebarMenuSubItem>
+          <p className="px-2 py-1 text-xs text-sidebar-foreground/70">No workspaces yet.</p>
+        </SidebarMenuSubItem>
+      ) : (
+        data.items.map((workspace) => {
+          const to = `/workspaces/${workspace.id}`;
+          return (
+            <SidebarMenuSubItem key={workspace.id}>
+              <SidebarMenuSubButton asChild isActive={location.pathname === to}>
+                <NavLink to={to} onClick={onNavigate}>
+                  <span>{workspace.name}</span>
+                </NavLink>
+              </SidebarMenuSubButton>
+            </SidebarMenuSubItem>
+          );
+        })
+      )}
+    </SidebarMenuSub>
+  );
+}
+
+function WorkspaceSubmenuLoading() {
+  return (
+    <SidebarMenuSub>
+      <SidebarMenuSubItem>
+        <div className="flex h-7 items-center px-2 text-sidebar-foreground/70">
+          <Spinner className="size-3.5" />
+        </div>
+      </SidebarMenuSubItem>
+    </SidebarMenuSub>
+  );
+}
+
+const workspaceSubmenuLoadingFallback = <WorkspaceSubmenuLoading />;
+
+function WorkspaceSubmenuError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <SidebarMenuSub>
+      <SidebarMenuSubItem>
+        <div className="space-y-1 px-2 py-1.5 text-xs text-destructive" role="alert">
+          <p>Unable to load workspaces.</p>
+          <button type="button" className="text-sidebar-foreground underline" onClick={onRetry}>
+            Retry
+          </button>
+        </div>
+      </SidebarMenuSubItem>
+    </SidebarMenuSub>
+  );
+}
+
+interface WorkspaceNavigationErrorBoundaryProps {
+  children: ReactNode;
+  onReset: () => void;
+}
+
+class WorkspaceNavigationErrorBoundary extends Component<
+  WorkspaceNavigationErrorBoundaryProps,
+  { hasError: boolean }
+> {
+  override state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  private readonly reset = () => {
+    this.props.onReset();
+    this.setState({ hasError: false });
+  };
+
+  override render() {
+    return this.state.hasError ? (
+      <WorkspaceSubmenuError onRetry={this.reset} />
+    ) : (
+      this.props.children
+    );
+  }
 }

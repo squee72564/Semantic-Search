@@ -5,6 +5,7 @@ import { browserApiClient } from "~/lib/api.client";
 import {
   createWorkspaceMutation,
   deleteWorkspaceMutation,
+  sidebarWorkspacesQuery,
   updateWorkspaceMutation,
   workspaceQuery,
   workspaceQueryKeys,
@@ -15,10 +16,44 @@ import { mockApi } from "~/test-setup";
 describe("workspace queries", () => {
   it("builds stable list and detail keys", () => {
     expect(workspaceQueryKeys.list({ limit: "4" })).toEqual(["workspaces", "list", { limit: "4" }]);
+    expect(workspaceQueryKeys.sidebar()).toEqual(["workspaces", "list", "sidebar"]);
     expect(workspaceQueryKeys.detail("workspace-1")).toEqual([
       "workspaces",
       "detail",
       "workspace-1",
+    ]);
+  });
+
+  it("loads and flattens every sidebar page", async () => {
+    const requests: Array<{ cursor: string | null; limit: string | null }> = [];
+    mockApi.use(
+      http.get("*/workspaces", ({ request }) => {
+        const url = new URL(request.url);
+        const cursor = url.searchParams.get("cursor");
+        requests.push({ cursor, limit: url.searchParams.get("limit") });
+
+        if (!cursor) {
+          return HttpResponse.json({
+            items: [{ id: "workspace-1", name: "Newest" }],
+            limit: 100,
+            pageInfo: { nextCursor: "next-page" },
+          });
+        }
+
+        return HttpResponse.json({
+          items: [{ id: "workspace-2", name: "Oldest" }],
+          limit: 100,
+          pageInfo: { nextCursor: null },
+        });
+      }),
+    );
+
+    const result = await sidebarWorkspacesQuery(browserApiClient).queryFn!({} as never);
+
+    expect(result.items.map((workspace) => workspace.id)).toEqual(["workspace-1", "workspace-2"]);
+    expect(requests).toEqual([
+      { cursor: null, limit: "100" },
+      { cursor: "next-page", limit: "100" },
     ]);
   });
 

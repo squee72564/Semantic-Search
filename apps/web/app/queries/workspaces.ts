@@ -26,6 +26,7 @@ export const workspaceQueryKeys = {
   details: () => [...workspaceQueryKeys.all, "detail"] as const,
   list: (query: WorkspacesQueryInput) => [...workspaceQueryKeys.lists(), query] as const,
   lists: () => [...workspaceQueryKeys.all, "list"] as const,
+  sidebar: () => [...workspaceQueryKeys.lists(), "sidebar"] as const,
 };
 
 function assertSuccessfulResponse(response: Response) {
@@ -41,6 +42,34 @@ export function workspacesQuery(api: ApiClient, query: WorkspacesQueryInput = {}
       const response = await api.workspaces.$get({ query });
       assertSuccessfulResponse(response);
       return response.json();
+    },
+  });
+}
+
+export function sidebarWorkspacesQuery(api: ApiClient) {
+  return queryOptions({
+    queryKey: workspaceQueryKeys.sidebar(),
+    queryFn: async () => {
+      const fetchPage = async (cursor?: string) => {
+        const response = await api.workspaces.$get({
+          query: { ...(cursor ? { cursor } : {}), limit: "100" },
+        });
+        assertSuccessfulResponse(response);
+        return response.json();
+      };
+
+      const firstPage = await fetchPage();
+      const items = [...firstPage.items];
+      let cursor = firstPage.pageInfo.nextCursor;
+
+      while (cursor) {
+        // eslint-disable-next-line no-await-in-loop -- each cursor is supplied by the preceding page.
+        const page = await fetchPage(cursor);
+        items.push(...page.items);
+        cursor = page.pageInfo.nextCursor;
+      }
+
+      return { items };
     },
   });
 }
