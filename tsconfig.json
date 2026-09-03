@@ -8,7 +8,6 @@
     { "path": "./packages/db" },
     { "path": "./packages/env" },
     { "path": "./packages/object-storage" },
-    { "path": "./packages/test-utils" },
-    { "path": "./tooling/scripts" }
+    { "path": "./packages/test-utils" }
   ]
 }

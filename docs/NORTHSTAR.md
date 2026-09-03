@@ -90,7 +90,6 @@ repository is fully ESM TypeScript, targets Node.js 24, and currently has this s
 │   ├── env/                Zod-validated API and web environment contracts
 │   ├── config/             Shared TypeScript and Vitest configuration
 │   └── test-utils/         Shared fixtures and MSW handlers
-├── tooling/scripts/         Repository-specific commands and environment loader
 ├── compose.yaml
 ├── pnpm-workspace.yaml
 ├── turbo.json
@@ -154,9 +153,7 @@ pnpm test | pnpm typecheck | pnpm lint
 ```
 
 Root scripts should delegate to workspace scripts through Turborepo or `pnpm --filter`, consistent
-with the existing database and auth commands. Local commands that need secrets should use
-`tooling/scripts/run-with-env.mjs`; production processes receive environment variables from their
-runtime.
+with the existing database and auth commands.
 
 ### Database
 

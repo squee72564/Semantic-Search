@@ -15,7 +15,6 @@ A fully ESM TypeScript monorepo built for Node.js 24 with pnpm workspaces and Tu
 - `packages/object-storage` — lifecycle-managed S3-compatible object-storage client factory.
 - `packages/config` — shared TypeScript and Vitest configuration.
 - `packages/test-utils` — fixtures and MSW handlers.
-- `tooling/scripts` — repository-specific scripts.
 
 The browser and React Router SSR process both call the Hono contract. They never import database or API
 server modules. In production, route `/api/auth/*` to the Hono service without rewriting the path.
@@ -35,7 +34,7 @@ cp .env.example .env
 # Set PostgreSQL, Better Auth, and dedicated development S3 credentials in .env before continuing.
 # Suggested generators: `openssl rand -hex 24` for the password and
 # `openssl rand -base64 32` for the authentication secret.
-docker compose up -d postgres
+docker compose up -d
 pnpm install
 pnpm db:migrate
 pnpm dev
