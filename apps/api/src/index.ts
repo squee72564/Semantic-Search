@@ -1,9 +1,10 @@
 import { createAuth } from "@repo/auth";
-import { createDatabase, createWorkspaceRepository, createDocumentRepository } from "@repo/db";
+import { createDatabase, createUnitOfWork } from "@repo/db";
 import { readApiEnv } from "@repo/env/api";
 import { createApp } from "./app.js";
 import { createLogger, flushLogger, type Logger } from "./lib/logger.js";
 import { startServer } from "./lib/server.js";
+import { createApiRepositories } from "./lib/repository_factory.js";
 
 async function main(): Promise<void> {
   let logger: Logger | undefined;
@@ -16,6 +17,8 @@ async function main(): Promise<void> {
     const { db, close } = createDatabase(env.DATABASE_URL);
     closeDatabase = close;
 
+    const persistence = createUnitOfWork(db, createApiRepositories);
+
     const auth = createAuth({
       db,
       config: {
@@ -27,8 +30,8 @@ async function main(): Promise<void> {
 
     const app = createApp({
       auth,
-      documents: createDocumentRepository(db),
-      workspaces: createWorkspaceRepository(db),
+      documents: persistence.repositories.documents,
+      workspaces: persistence.repositories.workspaces,
       env,
       logger,
     });
