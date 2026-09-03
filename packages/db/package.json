@@ -11,6 +11,7 @@
     "lint": "oxlint . --report-unused-disable-directives",
     "lint:types": "oxlint --type-aware .",
     "test": "vitest run",
+    "test:integration": "vitest run src/repositories/jobs.integration.test.ts",
     "test:coverage": "vitest run --coverage",
     "db:generate": "dotenv -e ../../.env -- drizzle-kit generate",
     "db:migrate": "dotenv -e ../../.env -- drizzle-kit migrate",

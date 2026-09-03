@@ -1,6 +1,31 @@
 export { createDatabase, type Database, type ClosePostgresConnFn } from "./client.js";
 export { createCursorPage, type CursorPage } from "./repositories/pagination.js";
 export {
+  createJobRepository,
+  type ActiveJobState,
+  type CancellationResult,
+  type ClaimedJob,
+  type ClaimJobInput,
+  type CreateDocumentProcessingJobInput,
+  type CreateJobInput,
+  type CreateJobResult,
+  type CreateMaintenanceJobInput,
+  type FinishCancelledJobAttemptInput,
+  type FinishJobAttemptInput,
+  type FinishRetryableJobAttemptInput,
+  type FinishSucceededJobAttemptInput,
+  type FinishTerminalJobAttemptInput,
+  type JobCursor,
+  type JobPage,
+  type JobRepository,
+  type JobRepositoryExecutor,
+  type ListJobsInput,
+  type RecoverExpiredJobsInput,
+  type RecoverExpiredJobsResult,
+  type RenewJobLeaseInput,
+  type ReportJobProgressInput,
+} from "./repositories/jobs.js";
+export {
   createDocumentRepository,
   type AttachDocumentInput,
   type CreateDocumentInput,
