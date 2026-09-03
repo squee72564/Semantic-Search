@@ -1,6 +1,6 @@
 import { and, arrayContains, desc, eq, exists, lt, notExists, or, sql } from "drizzle-orm";
 
-import type { Database } from "../client.js";
+import type { DatabaseExecutor } from "../client.js";
 import { documents, type Document, type DocumentStatus } from "../schema/documents.js";
 import { workspaceDocuments, type WorkspaceDocument } from "../schema/workspace-documents.js";
 import { workspaces } from "../schema/workspaces.js";
@@ -98,7 +98,7 @@ export interface DocumentRepository {
   ) => Promise<Document | null>;
 }
 
-export function createDocumentRepository(db: Database): DocumentRepository {
+export function createDocumentRepository(db: DatabaseExecutor): DocumentRepository {
   return {
     async attach(userId, workspaceId, documentId, input = {}) {
       const [ownedPair] = await db

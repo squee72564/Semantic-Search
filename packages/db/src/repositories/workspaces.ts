@@ -1,6 +1,6 @@
 import { and, desc, eq, lt, or } from "drizzle-orm";
 
-import type { Database } from "../client.js";
+import type { DatabaseExecutor } from "../client.js";
 import { workspaces, type Workspace } from "../schema/workspaces.js";
 import { createCursorPage, type CursorPage } from "./pagination.js";
 
@@ -35,7 +35,7 @@ export interface WorkspaceRepository {
   update: (userId: string, id: string, input: UpdateWorkspaceInput) => Promise<Workspace | null>;
 }
 
-export function createWorkspaceRepository(db: Database): WorkspaceRepository {
+export function createWorkspaceRepository(db: DatabaseExecutor): WorkspaceRepository {
   return {
     async create(userId, input) {
       const [created] = await db

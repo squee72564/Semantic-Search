@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { and, asc, desc, eq, inArray, lt, lte, or, sql } from "drizzle-orm";
 
-import type { Database } from "../client.js";
+import type { DatabaseExecutor } from "../client.js";
 import {
   jobAttempts,
   jobs,
@@ -15,9 +15,6 @@ import {
   type JobStatus,
 } from "../schema/jobs.js";
 import { createCursorPage, type CursorPage } from "./pagination.js";
-
-type DatabaseTransaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
-export type JobRepositoryExecutor = Database | DatabaseTransaction;
 
 export interface JobCursor {
   createdAt: Date;
@@ -157,7 +154,7 @@ export interface JobRepository {
   requestCancellation: (userId: string, jobId: string) => Promise<CancellationResult>;
 }
 
-export function createJobRepository(db: JobRepositoryExecutor): JobRepository {
+export function createJobRepository(db: DatabaseExecutor): JobRepository {
   async function findByIdempotencyKey(userId: string, idempotencyKey: string): Promise<Job | null> {
     const [job] = await db
       .select()
