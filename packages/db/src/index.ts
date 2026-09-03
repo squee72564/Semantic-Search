@@ -1,4 +1,10 @@
-export { createDatabase, type Database, type ClosePostgresConnFn } from "./client.js";
+export {
+  createDatabase,
+  type Database,
+  type DatabaseExecutor,
+  type ClosePostgresConnFn,
+} from "./client.js";
+export { createUnitOfWork } from "./unit_of_work/index.js";
 export { createCursorPage, type CursorPage } from "./repositories/pagination.js";
 export {
   createJobRepository,
@@ -18,7 +24,6 @@ export {
   type JobCursor,
   type JobPage,
   type JobRepository,
-  type JobRepositoryExecutor,
   type ListJobsInput,
   type RecoverExpiredJobsInput,
   type RecoverExpiredJobsResult,
