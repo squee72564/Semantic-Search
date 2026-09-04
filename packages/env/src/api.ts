@@ -23,6 +23,28 @@ const booleanStringSchema = z.enum(["true", "false"]).transform((value) => value
 export const apiEnvSchema = z.object({
   API_HOST: z.string().min(1).default("0.0.0.0"),
   API_PORT: z.coerce.number().int().min(1).max(65_535).default(3001),
+  UPLOAD_MAX_FILE_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(1024 ** 3)
+    .default(50 * 1024 ** 2),
+  UPLOAD_MAX_METADATA_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(1024 ** 2)
+    .default(64 * 1024),
+  UPLOAD_MAX_OVERHEAD_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(16 * 1024 ** 2)
+    .default(1024 ** 2),
+  UPLOAD_MAX_CONCURRENT: z.coerce.number().int().min(1).max(100).default(4),
+  UPLOAD_TIMEOUT_MS: z.coerce.number().int().min(1).max(3_600_000).default(300_000),
+  PDF_VALIDATION_TIMEOUT_MS: z.coerce.number().int().min(1).max(300_000).default(30_000),
+  PDFINFO_PATH: z.string().min(1).default("pdfinfo"),
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: z.url().default("http://localhost:5173"),
   DATABASE_URL: z.url(),

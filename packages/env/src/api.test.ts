@@ -25,6 +25,13 @@ describe("apiEnvSchema", () => {
     expect(env.BETTER_AUTH_URL).toBe("http://localhost:5173");
     expect(env.DATABASE_URL).toContain("squee_online");
     expect(env.S3_FORCE_PATH_STYLE).toBe(false);
+    expect(env.UPLOAD_MAX_FILE_BYTES).toBe(50 * 1024 ** 2);
+    expect(env.UPLOAD_MAX_METADATA_BYTES).toBe(64 * 1024);
+    expect(env.UPLOAD_MAX_OVERHEAD_BYTES).toBe(1024 ** 2);
+    expect(env.UPLOAD_MAX_CONCURRENT).toBe(4);
+    expect(env.UPLOAD_TIMEOUT_MS).toBe(300_000);
+    expect(env.PDF_VALIDATION_TIMEOUT_MS).toBe(30_000);
+    expect(env.PDFINFO_PATH).toBe("pdfinfo");
   });
 
   it("rejects invalid ports", () => {
@@ -36,6 +43,21 @@ describe("apiEnvSchema", () => {
         ...storageEnv,
       }),
     ).toThrow(/65_535|65535|Too big/u);
+  });
+
+  it.each([
+    "UPLOAD_MAX_FILE_BYTES",
+    "UPLOAD_MAX_METADATA_BYTES",
+    "UPLOAD_MAX_OVERHEAD_BYTES",
+    "UPLOAD_MAX_CONCURRENT",
+    "UPLOAD_TIMEOUT_MS",
+    "PDF_VALIDATION_TIMEOUT_MS",
+  ] as const)("validates positive bounded %s", (key) => {
+    const base = { DATABASE_URL: databaseUrl, BETTER_AUTH_SECRET: authSecret, ...storageEnv };
+    expect(apiEnvSchema.parse({ ...base, [key]: "2" })[key]).toBe(2);
+    expect(apiEnvSchema.safeParse({ ...base, [key]: "0" }).success).toBe(false);
+    expect(apiEnvSchema.safeParse({ ...base, [key]: "1.5" }).success).toBe(false);
+    expect(apiEnvSchema.safeParse({ ...base, [key]: "999999999999999999" }).success).toBe(false);
   });
 
   it("requires a database URL", () => {

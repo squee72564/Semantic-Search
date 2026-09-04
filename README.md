@@ -26,6 +26,9 @@ requests to the web service.
 - Node.js 24 LTS
 - pnpm 11.15.1 (activate with `corepack enable`)
 - Docker or another PostgreSQL 18-compatible server for local API-backed development
+- Poppler (`pdfinfo` on PATH, or set `PDFINFO_PATH`) for PDF uploads. On Windows use the actual
+  `pdfinfo.exe`, not a shell wrapper. See [document uploads](docs/DOCUMENT_UPLOADS.md) for configuration
+  and integration-test instructions.
 
 ## Start locally
 
@@ -62,7 +65,7 @@ role/database or recreate the local volume before starting PostgreSQL again.
 The web app runs at `http://localhost:5173`; the API runs at `http://localhost:3001`. Vite proxies
 same-origin browser requests from `/api` to the API. `API_INTERNAL_URL` is used for server-side calls.
 The worker runs as a separate headless process under `pnpm dev`; its polling interval defaults to one
-second and can be changed with `WORKER_POLL_INTERVAL_MS`. Until the jobs repository is implemented,
+second and can be changed with `WORKER_POLL_INTERVAL_MS`. Until the worker consumer is implemented,
 the poll callback intentionally performs no work while preserving the production process lifecycle.
 
 ## Commands

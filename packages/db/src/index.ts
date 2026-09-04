@@ -4,7 +4,7 @@ export {
   type DatabaseExecutor,
   type ClosePostgresConnFn,
 } from "./client.js";
-export { createUnitOfWork } from "./unit_of_work/index.js";
+export { createUnitOfWork, type UnitOfWork, type RepositoryFactory } from "./unit_of_work/index.js";
 export { createCursorPage, type CursorPage } from "./repositories/pagination.js";
 export {
   createJobRepository,
@@ -32,6 +32,7 @@ export {
 } from "./repositories/jobs.js";
 export {
   createDocumentRepository,
+  DocumentDeletingError,
   type AttachDocumentInput,
   type CreateDocumentInput,
   type DocumentCursor,

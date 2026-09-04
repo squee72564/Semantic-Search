@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
-import type { ApiEnv } from "@repo/env/api";
+import { apiEnvSchema, type ApiEnv } from "@repo/env/api";
 import type { AppVariables } from "../lib/context.js";
 import { createRequestIdMiddleware } from "./request-id.js";
 import { createCsrfProtection, createSecurityMiddleware } from "./security.js";
 
 const createTestApp = (nodeEnv: ApiEnv["NODE_ENV"] = "test") => {
-  const env: ApiEnv = {
+  const env = apiEnvSchema.parse({
     API_HOST: "127.0.0.1",
     API_PORT: 3001,
     BETTER_AUTH_SECRET: "test-auth-secret-with-at-least-32-characters",
@@ -17,10 +17,10 @@ const createTestApp = (nodeEnv: ApiEnv["NODE_ENV"] = "test") => {
     S3_ACCESS_KEY_ID: "test-access-key",
     S3_BUCKET: "semantic-search-test",
     S3_ENDPOINT: "https://fsn1.your-objectstorage.com",
-    S3_FORCE_PATH_STYLE: false,
+    S3_FORCE_PATH_STYLE: "false",
     S3_REGION: "fsn1",
     S3_SECRET_ACCESS_KEY: "test-secret-key",
-  };
+  });
   const app = new Hono<{ Variables: AppVariables }>();
 
   app.use("*", createRequestIdMiddleware());

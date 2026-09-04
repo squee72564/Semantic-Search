@@ -12,6 +12,7 @@ import { createRequestIdMiddleware } from "./middleware/request-id.js";
 import { createRequestLoggerMiddleware } from "./middleware/request-logger.js";
 import { createCsrfProtection, createSecurityMiddleware } from "./middleware/security.js";
 import { type ApiAuthentication, createAuthenticationMiddleware } from "./lib/auth.js";
+import type { UploadDocument } from "./uploads/service.js";
 
 export interface AppDependencies {
   auth: ApiAuthentication;
@@ -19,9 +20,17 @@ export interface AppDependencies {
   workspaces: WorkspaceRepository;
   env: ApiEnv;
   logger: Logger;
+  uploadDocument: UploadDocument;
 }
 
-export function createApp({ auth, documents, workspaces, env, logger }: AppDependencies) {
+export function createApp({
+  auth,
+  documents,
+  workspaces,
+  env,
+  logger,
+  uploadDocument,
+}: AppDependencies) {
   const app = new Hono<{ Variables: AppVariables }>();
 
   app.use("*", createRequestIdMiddleware());
@@ -43,7 +52,14 @@ export function createApp({ auth, documents, workspaces, env, logger }: AppDepen
     .route("/documents", createDocumentRoutes(documents, requireAuth()))
     .route(
       "/workspaces/:workspaceId/documents",
-      createWorkspaceDocumentRoutes(documents, workspaces, requireAuth()),
+      createWorkspaceDocumentRoutes(documents, workspaces, requireAuth(), {
+        execute: uploadDocument,
+        limits: {
+          maxFileBytes: env.UPLOAD_MAX_FILE_BYTES,
+          maxMetadataBytes: env.UPLOAD_MAX_METADATA_BYTES,
+          maxOverheadBytes: env.UPLOAD_MAX_OVERHEAD_BYTES,
+        },
+      }),
     );
 
   routes.onError(createErrorHandler(env, logger));

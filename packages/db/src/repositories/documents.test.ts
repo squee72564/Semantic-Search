@@ -65,7 +65,14 @@ function attachmentRow({
 
 function createRecordingDatabase(responses: unknown[][][]) {
   const queries: CapturedQuery[] = [];
-  const client = {
+  const client: {
+    begin: <T>(callback: (transactionClient: typeof client) => Promise<T>) => Promise<T>;
+    options: { parsers: Record<string, never>; serializers: Record<string, never> };
+    savepoint: <T>(callback: (transactionClient: typeof client) => Promise<T>) => Promise<T>;
+    unsafe: (sql: string, parameters: readonly unknown[]) => { values: () => Promise<unknown[][]> };
+  } = {
+    begin: (callback) => callback(client),
+    savepoint: (callback) => callback(client),
     options: { parsers: {}, serializers: {} },
     unsafe(sql: string, parameters: readonly unknown[]) {
       queries.push({ parameters, sql });
@@ -83,6 +90,32 @@ function createRecordingDatabase(responses: unknown[][][]) {
 }
 
 describe("Document repository", () => {
+  it("resolves only checksum conflicts and locks the existing document", async () => {
+    const { db, queries } = createRecordingDatabase([[], [documentRow()]]);
+    const repository = createDocumentRepository(db);
+    await expect(
+      repository.createOrFind(userId, {
+        id: documentId,
+        originalObjectKey: "original.pdf",
+        originalFilename: "source.pdf",
+        originalContentType: "application/pdf",
+        originalSizeBytes: 1024,
+        sha256,
+      }),
+    ).resolves.toMatchObject({ created: false, document: { id: documentId, userId } });
+    expect(queries[0]?.sql).toContain('on conflict ("user_id","sha256") do nothing');
+    expect(queries[1]?.sql).toContain("for update");
+  });
+
+  it("refuses attaching a deleting document before the attachment insert", async () => {
+    const { db, queries } = createRecordingDatabase([[[documentId, "deleting"]]]);
+    await expect(
+      createDocumentRepository(db).attach(userId, workspaceId, documentId),
+    ).rejects.toThrow("being deleted");
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.sql).toContain("for update");
+  });
+
   it("creates and finds a canonical document within the authenticated user boundary", async () => {
     const { db, queries } = createRecordingDatabase([[documentRow()], [documentRow()]]);
     const repository = createDocumentRepository(db);
@@ -291,6 +324,7 @@ describe("Document repository", () => {
     const { db, queries } = createRecordingDatabase([
       [attachmentRow({ tags: ["updated"] })],
       [[documentId]],
+      [[documentId]],
     ]);
     const repository = createDocumentRepository(db);
 
@@ -302,7 +336,7 @@ describe("Document repository", () => {
     ).resolves.toMatchObject({ tags: ["updated"] });
     await expect(repository.detach(userId, workspaceId, documentId)).resolves.toBe(true);
 
-    for (const query of queries) {
+    for (const query of queries.filter((entry) => !entry.sql.includes("for update"))) {
       expect(query.parameters).toContain(userId);
       expect(query.parameters).toContain(workspaceId);
       expect(query.parameters).toContain(documentId);
@@ -334,17 +368,18 @@ describe("Document repository", () => {
   });
 
   it("marks only unattached user-owned documents for deletion", async () => {
-    const { db, queries } = createRecordingDatabase([[documentRow()]]);
+    const { db, queries } = createRecordingDatabase([[[documentId]], [documentRow()]]);
     const repository = createDocumentRepository(db);
 
     await expect(repository.markDeletingIfUnattached(userId, documentId)).resolves.toMatchObject({
       id: documentId,
     });
-    expect(queries[0]?.sql).toContain('update "documents" set');
-    expect(queries[0]?.sql).toContain("not exists (select");
-    expect(queries[0]?.parameters).toContain("deleting");
-    expect(queries[0]?.parameters).toContain(userId);
-    expect(queries[0]?.parameters).toContain(documentId);
+    expect(queries[0]?.sql).toContain("for update");
+    expect(queries[1]?.sql).toContain('update "documents" set');
+    expect(queries[1]?.sql).toContain("not exists (select");
+    expect(queries[1]?.parameters).toContain("deleting");
+    expect(queries[1]?.parameters).toContain(userId);
+    expect(queries[1]?.parameters).toContain(documentId);
   });
 
   it("rejects invalid contextual tags before inserting an attachment", async () => {

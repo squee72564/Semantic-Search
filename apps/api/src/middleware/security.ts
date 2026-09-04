@@ -125,8 +125,8 @@ export const createCsrfProtection = (env: ApiEnv): ApiMiddleware => {
   };
 };
 
-export const createRequestBodyLimit = (env: ApiEnv): ApiMiddleware =>
-  bodyLimit({
+export const createRequestBodyLimit = (env: ApiEnv): ApiMiddleware => {
+  const standardLimit = bodyLimit({
     maxSize: MAX_REQUEST_BODY_SIZE,
     onError: (context) => {
       const error = createErrorResponse(
@@ -144,6 +144,17 @@ export const createRequestBodyLimit = (env: ApiEnv): ApiMiddleware =>
       });
     },
   });
+  return (context, next) => {
+    // The upload parser enforces actual streamed bytes after auth and ownership checks.
+    // Hono's default limiter buffers requests without Content-Length.
+    if (
+      context.req.method === "POST" &&
+      /^\/workspaces\/[^/]+\/documents\/?$/u.test(context.req.path)
+    )
+      return next();
+    return standardLimit(context, next);
+  };
+};
 
 export const createSecurityMiddleware = (env: ApiEnv): ApiMiddleware[] => [
   createSecurityHeaders(env),

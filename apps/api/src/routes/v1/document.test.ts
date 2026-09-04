@@ -60,6 +60,10 @@ const workspace: Workspace = {
 
 function createDocumentRepository(overrides: Partial<DocumentRepository> = {}): DocumentRepository {
   return {
+    createOrFind: vi.fn<DocumentRepository["createOrFind"]>(async () => ({
+      document,
+      created: true,
+    })),
     attach: vi.fn<DocumentRepository["attach"]>(async () => attachment),
     create: vi.fn<DocumentRepository["create"]>(async () => document),
     detach: vi.fn<DocumentRepository["detach"]>(async () => true),

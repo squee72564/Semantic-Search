@@ -72,6 +72,10 @@ export interface UpdateWorkspaceDocumentInput {
 }
 
 export interface DocumentRepository {
+  createOrFind: (
+    userId: string,
+    input: CreateDocumentInput,
+  ) => Promise<{ document: Document; created: boolean }>;
   attach: (
     userId: string,
     workspaceId: string,
@@ -98,56 +102,86 @@ export interface DocumentRepository {
   ) => Promise<Document | null>;
 }
 
+export class DocumentDeletingError extends Error {
+  constructor() {
+    super("Cannot attach a document that is being deleted");
+    this.name = "DocumentDeletingError";
+  }
+}
+
 export function createDocumentRepository(db: DatabaseExecutor): DocumentRepository {
   return {
+    async createOrFind(userId, input) {
+      return db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(documents)
+          .values({ ...input, userId })
+          .onConflictDoNothing({ target: [documents.userId, documents.sha256] })
+          .returning();
+        if (created) return { document: created, created: true };
+        const [document] = await tx
+          .select()
+          .from(documents)
+          .where(and(eq(documents.userId, userId), eq(documents.sha256, input.sha256)))
+          .limit(1)
+          .for("update");
+        if (!document) throw new Error("Document conflict did not resolve to an existing document");
+        return { document, created: false };
+      });
+    },
+
     async attach(userId, workspaceId, documentId, input = {}) {
-      const [ownedPair] = await db
-        .select({ documentId: documents.id })
-        .from(documents)
-        .innerJoin(
-          workspaces,
-          and(eq(workspaces.userId, documents.userId), eq(workspaces.userId, userId)),
-        )
-        .where(
-          and(
-            eq(documents.userId, userId),
-            eq(documents.id, documentId),
-            eq(workspaces.id, workspaceId),
-          ),
-        )
-        .limit(1);
+      return db.transaction(async (tx) => {
+        const [ownedPair] = await tx
+          .select({ documentId: documents.id, status: documents.status })
+          .from(documents)
+          .innerJoin(
+            workspaces,
+            and(eq(workspaces.userId, documents.userId), eq(workspaces.userId, userId)),
+          )
+          .where(
+            and(
+              eq(documents.userId, userId),
+              eq(documents.id, documentId),
+              eq(workspaces.id, workspaceId),
+            ),
+          )
+          .limit(1)
+          .for("update", { of: documents });
 
-      if (!ownedPair) return null;
+        if (!ownedPair) return null;
+        if (ownedPair.status === "deleting") throw new DocumentDeletingError();
 
-      const [attached] = await db
-        .insert(workspaceDocuments)
-        .values({
-          documentId,
-          displayTitle: input.displayTitle,
-          tags: normalizeTags(input.tags),
-          userId,
-          workspaceId,
-        })
-        .onConflictDoNothing({
-          target: [workspaceDocuments.workspaceId, workspaceDocuments.documentId],
-        })
-        .returning();
+        const [attached] = await tx
+          .insert(workspaceDocuments)
+          .values({
+            documentId,
+            displayTitle: input.displayTitle,
+            tags: normalizeTags(input.tags),
+            userId,
+            workspaceId,
+          })
+          .onConflictDoNothing({
+            target: [workspaceDocuments.workspaceId, workspaceDocuments.documentId],
+          })
+          .returning();
 
-      if (attached) return attached;
+        if (attached) return attached;
 
-      const [existing] = await db
-        .select()
-        .from(workspaceDocuments)
-        .where(
-          and(
-            eq(workspaceDocuments.userId, userId),
-            eq(workspaceDocuments.workspaceId, workspaceId),
-            eq(workspaceDocuments.documentId, documentId),
-          ),
-        )
-        .limit(1);
+        const [existing] = await tx
+          .select()
+          .from(workspaceDocuments)
+          .where(
+            and(
+              eq(workspaceDocuments.userId, userId),
+              eq(workspaceDocuments.workspaceId, workspaceId),
+              eq(workspaceDocuments.documentId, documentId),
+            ),
+          )
+          .limit(1);
 
-      return existing ?? null;
+        return existing ?? null;
+      });
     },
 
     async create(userId, input) {
@@ -167,18 +201,25 @@ export function createDocumentRepository(db: DatabaseExecutor): DocumentReposito
     },
 
     async detach(userId, workspaceId, documentId) {
-      const detached = await db
-        .delete(workspaceDocuments)
-        .where(
-          and(
-            eq(workspaceDocuments.userId, userId),
-            eq(workspaceDocuments.workspaceId, workspaceId),
-            eq(workspaceDocuments.documentId, documentId),
-          ),
-        )
-        .returning({ documentId: workspaceDocuments.documentId });
+      return db.transaction(async (tx) => {
+        await tx
+          .select({ id: documents.id })
+          .from(documents)
+          .where(and(eq(documents.userId, userId), eq(documents.id, documentId)))
+          .for("update");
+        const detached = await tx
+          .delete(workspaceDocuments)
+          .where(
+            and(
+              eq(workspaceDocuments.userId, userId),
+              eq(workspaceDocuments.workspaceId, workspaceId),
+              eq(workspaceDocuments.documentId, documentId),
+            ),
+          )
+          .returning({ documentId: workspaceDocuments.documentId });
 
-      return detached.length > 0;
+        return detached.length > 0;
+      });
     },
 
     async findById(userId, id) {
@@ -287,29 +328,38 @@ export function createDocumentRepository(db: DatabaseExecutor): DocumentReposito
     },
 
     async markDeletingIfUnattached(userId, id) {
-      const [updated] = await db
-        .update(documents)
-        .set({ status: "deleting", updatedAt: new Date() })
-        .where(
-          and(
-            eq(documents.userId, userId),
-            eq(documents.id, id),
-            notExists(
-              db
-                .select({ value: sql`1` })
-                .from(workspaceDocuments)
-                .where(
-                  and(
-                    eq(workspaceDocuments.userId, documents.userId),
-                    eq(workspaceDocuments.documentId, documents.id),
+      return db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select({ id: documents.id })
+          .from(documents)
+          .where(and(eq(documents.userId, userId), eq(documents.id, id)))
+          .for("update");
+        if (!locked) return null;
+        // Check attachments in a new statement after acquiring the document lock.
+        const [updated] = await tx
+          .update(documents)
+          .set({ status: "deleting", updatedAt: new Date() })
+          .where(
+            and(
+              eq(documents.userId, userId),
+              eq(documents.id, id),
+              notExists(
+                tx
+                  .select({ value: sql`1` })
+                  .from(workspaceDocuments)
+                  .where(
+                    and(
+                      eq(workspaceDocuments.userId, documents.userId),
+                      eq(workspaceDocuments.documentId, documents.id),
+                    ),
                   ),
-                ),
+              ),
             ),
-          ),
-        )
-        .returning();
+          )
+          .returning();
 
-      return updated ?? null;
+        return updated ?? null;
+      });
     },
 
     async updateAttachment(userId, workspaceId, documentId, input) {

@@ -25,7 +25,9 @@
     "@repo/auth": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/env": "workspace:*",
+    "@repo/object-storage": "workspace:*",
     "better-auth": "catalog:",
+    "busboy": "catalog:",
     "hono": "catalog:",
     "http-status-codes": "catalog:",
     "pino": "catalog:",
@@ -33,6 +35,7 @@
   },
   "devDependencies": {
     "@repo/config": "workspace:*",
+    "@types/busboy": "catalog:",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "pino-pretty": "catalog:",
