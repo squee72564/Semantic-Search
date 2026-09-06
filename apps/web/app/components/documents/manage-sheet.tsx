@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState, type SubmitEvent } from "react";
 import { Button } from "~/components/ui/button";
@@ -85,19 +86,17 @@ export function ManageDocumentSheet({
 
 function DocumentDetails({ document }: { document: DocumentItem }) {
   const queryClient = useQueryClient();
-  const [saved, setSaved] = useState(false);
   const update = useMutation({
     ...updateDocumentMutation(browserApiClient),
     onSuccess: async ({ item }) => {
       queryClient.setQueryData(documentQueryKeys.detail(item.id), { item });
       await refreshDocuments(queryClient);
-      setSaved(true);
+      toast.success("Document metadata saved.");
     },
   });
   const submit = useCallback(
     async (event: SubmitEvent<HTMLFormElement>) => {
       event.preventDefault();
-      setSaved(false);
       try {
         await update.mutateAsync({
           id: document.id,
@@ -150,9 +149,6 @@ function DocumentDetails({ document }: { document: DocumentItem }) {
           <Button type="submit">{update.isPending ? "Saving…" : "Save metadata"}</Button>
         </fieldset>
         <DocumentError error={update.error} />
-        {saved ? (
-          <output className="block text-sm text-muted-foreground">Document metadata saved.</output>
-        ) : null}
       </form>
       <WorkspaceAttachment documentId={document.id} disabled={deleting} />
       <DeleteDocument document={document} />
@@ -169,6 +165,7 @@ function DeleteDocument({ document }: { document: DocumentItem }) {
       queryClient.setQueryData(documentQueryKeys.detail(item.id), { item });
       await refreshDocuments(queryClient);
       setOpen(false);
+      toast.success("Document deletion requested.");
     },
   });
   const changeOpen = useCallback(

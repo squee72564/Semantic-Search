@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, FileText, RefreshCw } from "lucide-react";
 import { useCallback, useState, type SubmitEvent } from "react";
@@ -51,7 +52,6 @@ export default function Documents({
   const [filters, setFilters] = useState<DocumentsQueryInput>({});
   const [cursors, setCursors] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [notice, setNotice] = useState("");
   const cursor = cursors.at(-1);
   const filtered = Object.keys(filters).length > 0;
   const query = { ...filters, limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) };
@@ -74,10 +74,8 @@ export default function Documents({
     if (nextCursor) setCursors((value) => [...value, nextCursor]);
   }, [nextCursor]);
   const uploaded = useCallback((result: UploadResponse) => {
-    setNotice(
-      result.reused
-        ? "Existing document reused and attached to the workspace."
-        : "PDF uploaded and attached to the workspace.",
+    toast.success(
+      result.reused ? "Existing document reused in your library." : "PDF uploaded to your library.",
     );
     setSelectedId(result.document.id);
   }, []);
@@ -100,9 +98,6 @@ export default function Documents({
         Keep your PDFs in one library. Organize them across workspaces, update their details, and
         track their status.
       </p>
-      {notice ? (
-        <output className="mt-5 block rounded-lg border bg-muted/40 p-3 text-sm">{notice}</output>
-      ) : null}
       <Card className="mt-8 gap-0 overflow-hidden py-0">
         <DocumentFilters
           onApply={applyFilters}
@@ -286,7 +281,7 @@ function DocumentResults({
         <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
           {filtered
             ? "Try another workspace, status, or tag."
-            : "Upload a PDF to a workspace to add it to your document library."}
+            : "Upload a PDF to add it to your document library."}
         </p>
       </div>
     );

@@ -5,6 +5,7 @@ import {
   createDocumentRoutes,
   createWorkspaceDocumentRoutes,
   createDocumentUploadRoutes,
+  createWorkspaceDocumentUploadRoutes,
 } from "./routes/v1/document.js";
 import { createWorkspaceRoutes } from "./routes/v1/workspace.js";
 import type { AppVariables } from "./lib/context.js";
@@ -47,17 +48,23 @@ export function createApp({
 
   const { requireAuth } = createAuthenticationMiddleware({ auth });
   // Uploads enforce streamed byte limits after CSRF, authentication, and ownership checks.
-  const uploads = app.route(
-    "/workspaces/:workspaceId/documents",
-    createDocumentUploadRoutes(requireAuth(), createCsrfProtection(env), {
-      execute: uploadDocument,
-      limits: {
-        maxFileBytes: env.UPLOAD_MAX_FILE_BYTES,
-        maxMetadataBytes: env.UPLOAD_MAX_METADATA_BYTES,
-        maxOverheadBytes: env.UPLOAD_MAX_OVERHEAD_BYTES,
-      },
-    }),
-  );
+  const upload = {
+    execute: uploadDocument,
+    limits: {
+      maxFileBytes: env.UPLOAD_MAX_FILE_BYTES,
+      maxMetadataBytes: env.UPLOAD_MAX_METADATA_BYTES,
+      maxOverheadBytes: env.UPLOAD_MAX_OVERHEAD_BYTES,
+    },
+  };
+  const uploads = app
+    .route(
+      "/documents",
+      createDocumentUploadRoutes(requireAuth(), createCsrfProtection(env), upload),
+    )
+    .route(
+      "/workspaces/:workspaceId/documents",
+      createWorkspaceDocumentUploadRoutes(requireAuth(), createCsrfProtection(env), upload),
+    );
   uploads.use("*", createRequestBodyLimit(env));
 
   // Better Auth performs endpoint-aware origin, CSRF, and protocol validation.

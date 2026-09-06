@@ -14,7 +14,7 @@ export type DocumentItem = Awaited<
 >["item"];
 export type DocumentStatus = DocumentItem["status"];
 export type UploadResponse = Awaited<
-  ReturnType<Awaited<ReturnType<WorkspaceDocumentsRoute["$post"]>>["json"]>
+  ReturnType<Awaited<ReturnType<DocumentsRoute["$post"]>>["json"]>
 >;
 
 export const documentQueryKeys = {
@@ -106,14 +106,12 @@ export function uploadDocumentMutation(api: ApiClient) {
     mutationKey: ["documents", "upload"],
     retry: false,
     mutationFn: async ({
-      workspaceId,
       file,
       metadata,
       signal,
     }: {
-      workspaceId: string;
       file: File;
-      metadata: DocumentMetadataInput & AttachmentInput;
+      metadata: DocumentMetadataInput;
       signal: AbortSignal;
     }) => {
       const body = new FormData();
@@ -121,10 +119,7 @@ export function uploadDocumentMutation(api: ApiClient) {
       body.append("metadata", JSON.stringify(metadata));
       // The route parses the stream itself, so Hono has no inferred form schema.
       // Let the browser generate Content-Type, including the multipart boundary.
-      const response = await api.workspaces[":workspaceId"].documents.$post(
-        { param: { workspaceId } },
-        { init: { body, signal } },
-      );
+      const response = await api.documents.$post({}, { init: { body, signal } });
       await assertSuccessfulResponse(response);
       return response.json();
     },

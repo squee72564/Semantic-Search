@@ -91,9 +91,9 @@ export function multipartBody(
 
 export function uploadRequest(
   body = multipartBody(),
-  options: { signal?: AbortSignal; contentLength?: string } = {},
+  options: { signal?: AbortSignal; contentLength?: string; path?: string } = {},
 ): Request {
-  return new Request(`http://localhost/workspaces/${workspaceId}/documents`, {
+  return new Request(`http://localhost${options.path ?? `/workspaces/${workspaceId}/documents`}`, {
     method: "POST",
     body: body.body,
     headers: {

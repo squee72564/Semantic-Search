@@ -26,6 +26,33 @@ function client() {
 }
 
 describe("document API queries", () => {
+  it("streams a multipart library upload without a workspace", async () => {
+    mockApi.use(
+      http.post("*/api/documents", async ({ request }) => {
+        expect(request.headers.get("content-type")).toMatch(/multipart\/form-data; boundary=/);
+        const form = await request.formData();
+        const file = form.get("file");
+        expect(file).toBeInstanceOf(File);
+        if (!(file instanceof File)) throw new Error("Missing file");
+        expect(file.name).toBe("paper.pdf");
+        expect(await file.text()).toBe("%PDF-1.7");
+        expect(form.get("metadata")).toBe('{"title":"Paper"}');
+        return HttpResponse.json(
+          { document: documentFixture, attachment: null, jobId: "job", reused: false },
+          { status: 201 },
+        );
+      }),
+    );
+    const observer = new MutationObserver(client(), uploadDocumentMutation(browserApiClient));
+    await expect(
+      observer.mutate({
+        file: new File(["%PDF-1.7"], "paper.pdf", { type: "application/pdf" }),
+        metadata: { title: "Paper" },
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toMatchObject({ attachment: null, reused: false });
+  });
+
   it("sends list filters and reads a document detail", async () => {
     mockApi.use(
       http.get("*/api/documents", ({ request }) => {
@@ -158,8 +185,7 @@ describe("document API queries", () => {
 
   it("posts a real multipart file and metadata with a generated boundary", async () => {
     mockApi.use(
-      http.post("*/api/workspaces/:workspaceId/documents", async ({ request, params }) => {
-        expect(params.workspaceId).toBe("workspace-one");
+      http.post("*/api/documents", async ({ request }) => {
         expect(request.headers.get("content-type")).toContain("multipart/form-data; boundary=");
         const body = await request.text();
         expect(body).toContain('name="file"; filename="paper.pdf"');
@@ -167,7 +193,7 @@ describe("document API queries", () => {
         expect(body).toContain("%PDF-1.7");
         expect(body).toContain(JSON.stringify({ title: "Paper" }));
         return HttpResponse.json(
-          { document: documentFixture, reused: false, jobId: null, attachment: {} },
+          { document: documentFixture, reused: false, jobId: null, attachment: null },
           { status: 201 },
         );
       }),
@@ -175,7 +201,6 @@ describe("document API queries", () => {
     const observer = new MutationObserver(client(), uploadDocumentMutation(browserApiClient));
     await expect(
       observer.mutate({
-        workspaceId: "workspace-one",
         file: new File(["%PDF-1.7"], "paper.pdf", { type: "application/pdf" }),
         metadata: { title: "Paper" },
         signal: new AbortController().signal,

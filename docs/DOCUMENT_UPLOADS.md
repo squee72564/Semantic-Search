@@ -1,13 +1,18 @@
 # Document uploads
 
-`POST /workspaces/:workspaceId/documents` accepts an authenticated, same-origin multipart request.
-The browser-facing proxy uses `/api/workspaces/:workspaceId/documents`. Send exactly one `file` part
-and optionally one `metadata` text part containing a JSON object. Metadata supports `title`,
-`description`, `customMetadata`, `displayTitle`, and `tags`, using the same validation as the existing
-document and workspace-attachment endpoints. Filenames are display metadata, never filesystem paths.
+`POST /documents` uploads directly to the authenticated user's library without a workspace.
+`POST /workspaces/:workspaceId/documents` uploads and attaches the document to that workspace.
+The browser-facing proxy prefixes these paths with `/api`. Both accept authenticated, same-origin
+multipart requests with exactly one `file` part and optionally one `metadata` JSON text part.
+
+Library metadata supports `title`, `description`, and `customMetadata`. Workspace-scoped uploads also
+accept `displayTitle` and `tags`; sending these attachment fields to the library endpoint returns
+HTTP 400 `WORKSPACE_REQUIRED`. Filenames are display metadata, never filesystem paths.
+The Documents page uploads to the library; workspace association is managed separately.
+Existing documents can be attached later with `PUT /workspaces/:workspaceId/documents/:documentId`.
 
 The response is `{ document, attachment, jobId, reused }`: HTTP 201 for a new canonical document,
-HTTP 200 for checksum reuse. Public document and attachment serializers omit internal storage keys
+HTTP 200 for checksum reuse. Library uploads return `attachment: null`. Public document and attachment serializers omit internal storage keys
 and owner IDs. A reused document returns its active processing job ID, or `null` when none exists.
 Reuploading an existing document preserves its canonical metadata and processing state. A preexisting
 attachment preserves its display title and tags. Failed jobs are not automatically restarted.
@@ -29,10 +34,10 @@ Missing Poppler is reported as HTTP 503. Page-level analysis remains worker pref
 | `UPLOAD_TIMEOUT_MS`         | 300000 (five minutes)                              |
 | `PDF_VALIDATION_TIMEOUT_MS` | 30000 (30 seconds)                                 |
 
-Only the POST upload route bypasses the ordinary 1 MiB body limiter. Its parser counts actual bytes
+Only the two POST upload routes bypass the ordinary 1 MiB body limiter. Their parser counts actual bytes
 regardless of Content-Length, streams with backpressure to an OS temporary directory, and hashes the
 file incrementally. Metadata, file count, total bytes, and file bytes are bounded independently.
-Authentication and workspace ownership are checked before consuming the file. The concurrency cap
+Authentication is checked before consuming the file; workspace-scoped uploads also check ownership. The concurrency cap
 covers validation, upload, and database publication; excess requests receive HTTP 503. Provision
 temporary disk for at least `UPLOAD_MAX_FILE_BYTES * UPLOAD_MAX_CONCURRENT` per API process.
 
@@ -62,11 +67,11 @@ files left by a hard process or machine crash.
 
 The service publishes a new original to `documents/<generated UUID>/original.pdf` with write-once
 storage semantics, verifies size, content type, and application-computed SHA-256 metadata using HEAD,
-then commits its database reference, workspace attachment, and preflight job in one UoW transaction.
+then commits its database reference, optional workspace attachment, and preflight job in one scoped persistence transaction.
 SHA-256 metadata is an application assertion; an ETag is never treated as a content hash.
 
 The database's per-user checksum uniqueness resolves simultaneous identical uploads. The losing
-request reuses the canonical document and creates only its attachment. Sequential reuse performs no
+request reuses the canonical document and creates an attachment only when a workspace is requested. Sequential reuse performs no
 S3 write. Concurrent first uploads may temporarily leave redundant, unreferenced objects.
 Document-row locks serialize attachment, detachment, and deletion eligibility checks. A deleting
 document cannot be attached, and duplicate upload returns HTTP 409 while deletion is in progress.
@@ -80,12 +85,12 @@ that database publication succeeded. Do not delete these objects blindly.
 check database references, and distinguish unresolved publication from confirmed orphans. Until it
 exists, these objects remain in storage. Monitor reconciliation and temporary-cleanup logs.
 **Worker consumption is also deferred:** new jobs are durable and queued, but the current worker's
-poll callback does not process them. No UI or database schema migration accompanies this endpoint.
+poll callback does not process them. No database schema migration is required for library uploads.
 
 ## Code organization
 
 `apps/api/src/uploads/service.ts` owns upload admission, the request deadline, file and storage work,
-error mapping, and cleanup. It shows three database scopes: workspace ownership before receiving the
+error mapping, and cleanup. Its database scopes are workspace ownership (only for scoped uploads) before receiving the
 file, checksum lookup after PDF validation, and the final publication transaction. No connection is
 leased during file reception, PDF validation, or S3 calls.
 
@@ -97,8 +102,7 @@ original public types.
 `packages/db/src/unit_of_work/scoped.ts` remains the persistence entrypoint and constructor. Its
 `scoped/` directory separates contracts, database errors, pool lifecycle, and the Postgres connection
 adapter. The adapter owns the sockets needed for forced retirement; the pool owns acquisition,
-deadlines, settlement, and shutdown. Ordinary API operations continue to use `UnitOfWork` and its
-long-lived repositories. Scoped persistence instead leases exclusive database access for each callback.
+deadlines, settlement, and shutdown. Ordinary API operations use repositories bound to the shared API database handle. Scoped persistence instead leases exclusive database access for each callback.
 
 Callbacks must await database work and check the supplied phase signal before further work. That
 signal includes database phase expiry and shutdown as well as upload cancellation. The upload signal

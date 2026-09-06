@@ -22,3 +22,19 @@ export function parseUploadMetadata(value: string | undefined): UploadMetadata {
     );
   }
 }
+
+export function validateUploadTarget(
+  metadata: UploadMetadata,
+  workspaceId: string | undefined,
+): void {
+  if (
+    workspaceId === undefined &&
+    (metadata.tags !== undefined || metadata.displayTitle !== undefined)
+  ) {
+    throw uploadError(
+      400,
+      "WORKSPACE_REQUIRED",
+      "Workspace tags and display title require a workspace-scoped upload.",
+    );
+  }
+}

@@ -5,7 +5,7 @@ import type {
   WorkspaceDocument,
   WorkspaceRepository,
 } from "@repo/db";
-import { Hono, type MiddlewareHandler } from "hono";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
 
 import { getAuthenticatedUser } from "../../lib/auth.js";
 import type { AppVariables } from "../../lib/context.js";
@@ -177,36 +177,54 @@ export function createDocumentRoutes(
     );
 }
 
+type DocumentUploadOptions = { execute: UploadDocument; limits: MultipartLimits };
+
+async function handleDocumentUpload(
+  context: Context<AppEnv>,
+  upload: DocumentUploadOptions,
+  workspaceId?: string,
+) {
+  const user = getAuthenticatedUser(context);
+  const result = await upload.execute({
+    userId: user.id,
+    ...(workspaceId === undefined ? {} : { workspaceId }),
+    requestId: context.get("requestId"),
+    signal: context.req.raw.signal,
+    prepare: (signal) => prepareMultipartUpload(context.req.raw, upload.limits, signal),
+  });
+  return context.json(
+    {
+      document: toDocumentResponse(result.document),
+      attachment:
+        result.attachment === null ? null : toWorkspaceDocumentResponse(result.attachment),
+      jobId: result.jobId,
+      reused: result.reused,
+    },
+    result.reused ? 200 : 201,
+  );
+}
+
 export function createDocumentUploadRoutes(
   requireAuth: MiddlewareHandler<AppEnv>,
   csrf: MiddlewareHandler<AppEnv>,
-  upload: { execute: UploadDocument; limits: MultipartLimits },
+  upload: DocumentUploadOptions,
+) {
+  return new Hono<AppEnv>().post("/", csrf, requireAuth, (context) =>
+    handleDocumentUpload(context, upload),
+  );
+}
+
+export function createWorkspaceDocumentUploadRoutes(
+  requireAuth: MiddlewareHandler<AppEnv>,
+  csrf: MiddlewareHandler<AppEnv>,
+  upload: DocumentUploadOptions,
 ) {
   return new Hono<AppEnv>().post(
     "/",
     csrf,
     requireAuth,
     zValidator("param", workspaceDocumentsParamsSchema, documentValidationHook),
-    async (context) => {
-      const user = getAuthenticatedUser(context);
-      const { workspaceId } = context.req.valid("param");
-      const result = await upload.execute({
-        userId: user.id,
-        workspaceId,
-        requestId: context.get("requestId"),
-        signal: context.req.raw.signal,
-        prepare: (signal) => prepareMultipartUpload(context.req.raw, upload.limits, signal),
-      });
-      return context.json(
-        {
-          document: toDocumentResponse(result.document),
-          attachment: toWorkspaceDocumentResponse(result.attachment),
-          jobId: result.jobId,
-          reused: result.reused,
-        },
-        result.reused ? 200 : 201,
-      );
-    },
+    (context) => handleDocumentUpload(context, upload, context.req.valid("param").workspaceId),
   );
 }
 

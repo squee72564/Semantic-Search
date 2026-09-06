@@ -33,14 +33,16 @@ export async function publishDocument(
     databaseSignal,
   }: {
     userId: string;
-    workspaceId: string;
+    workspaceId: string | undefined;
     file: PreparedUpload;
     publication: DocumentPublication;
     signal: AbortSignal;
     databaseSignal: AbortSignal;
   },
 ): Promise<UploadResult> {
-  await requireWorkspace(repositories, { userId, workspaceId, signal });
+  if (workspaceId !== undefined) {
+    await requireWorkspace(repositories, { userId, workspaceId, signal });
+  }
   databaseSignal.throwIfAborted();
   const resolved =
     publication.kind === "existing"
@@ -63,21 +65,13 @@ export async function publishDocument(
     throw uploadError(409, "DOCUMENT_CHANGED", "The document changed during upload. Please retry.");
   if (resolved.document.status === "deleting") throw new DocumentDeletingError();
   databaseSignal.throwIfAborted();
-  const attachment = await repositories.documents.attach(
+  const attachment = await attachUploadedDocument(
+    repositories,
     userId,
     workspaceId,
     resolved.document.id,
-    {
-      displayTitle: file.metadata.displayTitle,
-      tags: file.metadata.tags,
-    },
+    file,
   );
-  if (!attachment)
-    throw uploadError(
-      404,
-      "WORKSPACE_DOCUMENT_NOT_FOUND",
-      "The document or workspace is no longer available.",
-    );
   databaseSignal.throwIfAborted();
   const job = resolved.created
     ? (
@@ -107,4 +101,25 @@ export async function publishDocument(
     jobId: job?.id ?? null,
     reused: !resolved.created,
   };
+}
+
+async function attachUploadedDocument(
+  repositories: UploadRepositories,
+  userId: string,
+  workspaceId: string | undefined,
+  documentId: string,
+  file: PreparedUpload,
+): Promise<UploadResult["attachment"]> {
+  if (workspaceId === undefined) return null;
+  const attachment = await repositories.documents.attach(userId, workspaceId, documentId, {
+    displayTitle: file.metadata.displayTitle,
+    tags: file.metadata.tags,
+  });
+  if (!attachment)
+    throw uploadError(
+      404,
+      "WORKSPACE_DOCUMENT_NOT_FOUND",
+      "The document or workspace is no longer available.",
+    );
+  return attachment;
 }

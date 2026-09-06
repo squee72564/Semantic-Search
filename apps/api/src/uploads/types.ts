@@ -13,14 +13,14 @@ export type UploadRepositories = {
 
 export interface UploadResult {
   document: Document;
-  attachment: WorkspaceDocument;
+  attachment: WorkspaceDocument | null;
   jobId: string | null;
   reused: boolean;
 }
 
 export interface UploadInput {
   userId: string;
-  workspaceId: string;
+  workspaceId?: string;
   requestId: string;
   signal: AbortSignal;
   prepare: (signal: AbortSignal) => Promise<PreparedUpload>;

@@ -142,11 +142,40 @@ describe("document upload application service", () => {
     return { execute, input, repositories, transaction, storage, cleanup, logger, validatePdf };
   }
 
+  it.each([false, true])("publishes without a workspace (reuse=%s)", async (reused) => {
+    const h = setup();
+    delete h.input.workspaceId;
+    const prepared = await h.input.prepare(h.input.signal);
+    h.input.prepare = async () => ({ ...prepared, metadata: { title: "Uploaded" } });
+    if (reused) h.repositories.documents.findBySha256.mockResolvedValue(document);
+    const result = await h.execute(h.input);
+    expect(result).toMatchObject({ attachment: null, reused });
+    expect(result.jobId).toBeTruthy();
+    expect(h.repositories.workspaces.findById).not.toHaveBeenCalled();
+    expect(h.repositories.documents.attach).not.toHaveBeenCalled();
+    expect(h.repositories.jobs.create).toHaveBeenCalledTimes(reused ? 0 : 1);
+    expect(h.storage.put).toHaveBeenCalledTimes(reused ? 0 : 1);
+    expect(h.transaction).toHaveBeenCalledOnce();
+    expect(h.cleanup).toHaveBeenCalledOnce();
+  });
+
+  it("rejects attachment metadata without a workspace before storage publication", async () => {
+    const h = setup();
+    delete h.input.workspaceId;
+    await expect(h.execute(h.input)).rejects.toMatchObject({
+      code: "WORKSPACE_REQUIRED",
+      status: 400,
+    });
+    expect(h.storage.put).not.toHaveBeenCalled();
+    expect(h.transaction).not.toHaveBeenCalled();
+    expect(h.cleanup).toHaveBeenCalledOnce();
+  });
+
   it("verifies storage before committing all database writes and returns the new document", async () => {
     const h = setup();
     const result = await h.execute(h.input);
     expect(result.reused).toBe(false);
-    expect(result.attachment.documentId).toBe(result.document.id);
+    expect(result.attachment?.documentId).toBe(result.document.id);
     expect(h.storage.put).toHaveBeenCalledOnce();
     expect(h.storage.head.mock.invocationCallOrder[0]).toBeLessThan(
       h.transaction.mock.invocationCallOrder[0]!,

@@ -11,6 +11,7 @@ import type { Logger } from "../lib/logger.js";
 import { throwIfUploadAborted, uploadError } from "./errors.js";
 import type { PreparedUpload } from "./multipart.js";
 import type { ValidatePdf } from "./pdf.js";
+import { validateUploadTarget } from "./metadata.js";
 import { publishDocument, requireWorkspace } from "./publication.js";
 import type {
   DocumentPublication,
@@ -48,11 +49,14 @@ export function createUploadService({
     const publicationState: PublicationState = { stage: "prepare", published: false };
     try {
       throwIfUploadAborted(signal);
-      await persistence.read(
-        (repositories) => requireWorkspace(repositories, { userId, workspaceId, signal }),
-        databaseOptions,
-      );
+      if (workspaceId !== undefined) {
+        await persistence.read(
+          (repositories) => requireWorkspace(repositories, { userId, workspaceId, signal }),
+          databaseOptions,
+        );
+      }
       prepared = await prepare(signal);
+      validateUploadTarget(prepared.metadata, workspaceId);
       await validatePdf(prepared.path, signal);
       throwIfUploadAborted(signal);
       const file = prepared;

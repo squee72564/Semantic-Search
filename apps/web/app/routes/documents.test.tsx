@@ -1,9 +1,10 @@
+import { toast } from "sonner";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { workspaceFixtures } from "@repo/test-utils";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import Documents from "./documents";
 import { createQueryClient } from "~/query-client";
@@ -22,7 +23,11 @@ function renderPage(page = documentPage) {
   );
 }
 
+vi.mock("sonner", () => ({ toast: { success: vi.fn<typeof toast.success>() } }));
+const successToast = vi.mocked(toast.success);
+
 beforeEach(() => {
+  successToast.mockReset();
   mockApi.use(
     http.get("*/api/documents", () => HttpResponse.json(documentPage)),
     http.get("*/api/documents/:id", () => HttpResponse.json({ item: documentFixture })),
@@ -69,11 +74,53 @@ describe("Documents", () => {
     expect(requests.at(-1)?.get("status")).toBe("ready");
   });
 
-  it("uploads a PDF to the selected workspace and shows reuse", async () => {
+  it.each(["empty", "unavailable"] as const)(
+    "uploads directly to the library with %s workspaces",
+    async (workspaceState) => {
+      let requests = 0;
+      mockApi.use(
+        http.get("*/api/workspaces", () =>
+          workspaceState === "empty"
+            ? HttpResponse.json({ items: [], pageInfo: { nextCursor: null } })
+            : new HttpResponse(null, { status: 503 }),
+        ),
+        http.post("*/api/documents", async ({ request }) => {
+          requests += 1;
+          const body = await request.text();
+          expect(body).not.toContain('"tags"');
+          expect(body).not.toContain('"displayTitle"');
+          return HttpResponse.json(
+            { document: documentFixture, attachment: null, jobId: "job-one", reused: false },
+            { status: 201 },
+          );
+        }),
+      );
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(screen.getByRole("button", { name: "Upload PDF" }));
+      expect(
+        screen.queryByLabelText("Workspace", { selector: "select#upload-workspace" }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Workspace tags (optional)")).not.toBeInTheDocument();
+      await user.upload(
+        screen.getByLabelText("PDF file"),
+        new File(["%PDF-1.7"], "paper.pdf", { type: "application/pdf" }),
+      );
+      const form = screen.getByRole("button", { name: "Upload document" }).closest("form");
+      if (!form) throw new Error("Upload form missing");
+      // jsdom does not update native file validity when user-event sets input.files.
+      fireEvent.submit(form);
+      await waitFor(() =>
+        expect(successToast).toHaveBeenCalledWith("PDF uploaded to your library."),
+      );
+      expect(requests).toBe(1);
+    },
+  );
+
+  it("uploads a PDF to the library and shows reuse", async () => {
     let metadata: unknown;
     mockApi.use(
-      http.post("*/api/workspaces/:workspaceId/documents", async ({ request, params }) => {
-        expect(params.workspaceId).toBe(workspaceFixtures[0]!.id);
+      http.post("*/api/documents", async ({ request }) => {
         const body = await request.text();
         const metadataPart = body
           .split('name="metadata"')[1]
@@ -83,7 +130,7 @@ describe("Documents", () => {
         return HttpResponse.json({
           document: documentFixture,
           reused: true,
-          attachment: {},
+          attachment: null,
           jobId: null,
         });
       }),
@@ -91,45 +138,34 @@ describe("Documents", () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(screen.getByRole("button", { name: "Upload PDF" }));
-    await user.selectOptions(
-      await screen.findByLabelText("Workspace", { selector: "select#upload-workspace" }),
-      workspaceFixtures[0]!.id,
-    );
     await user.upload(
       screen.getByLabelText("PDF file"),
       new File(["%PDF-1.7"], "paper.pdf", { type: "application/pdf" }),
     );
     await user.type(screen.getByLabelText("Title (optional)"), "  Paper  ");
-    await user.type(screen.getByLabelText("Workspace tags (optional)"), "research, reference");
     // jsdom does not update native file validity when user-event sets input.files.
     const uploadForm = screen.getByRole("button", { name: "Upload document" }).closest("form");
     if (!uploadForm) throw new Error("Upload form missing");
     fireEvent.submit(uploadForm);
-    expect(
-      await screen.findByText("Existing document reused and attached to the workspace."),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(successToast).toHaveBeenCalledWith("Existing document reused in your library."),
+    );
     expect(metadata).toEqual({
       title: "Paper",
       description: null,
-      displayTitle: null,
-      tags: ["research", "reference"],
     });
     expect(await screen.findByRole("heading", { name: "Manage document" })).toBeInTheDocument();
   });
 
-  it("keeps upload values on server rejection and offers workspace creation when empty", async () => {
+  it("keeps upload values on server rejection and allows uploads without workspaces", async () => {
     mockApi.use(
-      http.post("*/api/workspaces/:workspaceId/documents", () =>
+      http.post("*/api/documents", () =>
         HttpResponse.json({ detail: "The PDF exceeds the size limit." }, { status: 413 }),
       ),
     );
     const user = userEvent.setup();
     const view = renderPage();
     await user.click(screen.getByRole("button", { name: "Upload PDF" }));
-    await user.selectOptions(
-      await screen.findByLabelText("Workspace", { selector: "select#upload-workspace" }),
-      workspaceFixtures[0]!.id,
-    );
     await user.upload(
       screen.getByLabelText("PDF file"),
       new File(["%PDF-1.7"], "paper.pdf", { type: "application/pdf" }),
@@ -149,17 +185,15 @@ describe("Documents", () => {
     );
     renderPage();
     await user.click(screen.getByRole("button", { name: "Upload PDF" }));
-    expect(await screen.findByRole("link", { name: "Go to workspaces" })).toHaveAttribute(
-      "href",
-      "/workspaces",
-    );
+    expect(await screen.findByLabelText("PDF file")).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Upload document" })).toBeEnabled();
   });
 
   it("cancels an in-flight upload without retrying it", async () => {
     const started = Promise.withResolvers<void>();
     let requests = 0;
     mockApi.use(
-      http.post("*/api/workspaces/:workspaceId/documents", async ({ request }) => {
+      http.post("*/api/documents", async ({ request }) => {
         requests += 1;
         started.resolve();
         await new Promise<void>((resolve) => {
@@ -172,10 +206,6 @@ describe("Documents", () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(screen.getByRole("button", { name: "Upload PDF" }));
-    await user.selectOptions(
-      await screen.findByLabelText("Workspace", { selector: "select#upload-workspace" }),
-      workspaceFixtures[0]!.id,
-    );
     await user.upload(
       screen.getByLabelText("PDF file"),
       new File(["%PDF-1.7"], "paper.pdf", { type: "application/pdf" }),
@@ -253,7 +283,7 @@ describe("Documents", () => {
     await user.clear(title);
     await user.type(title, "Revised notes");
     await user.click(screen.getByRole("button", { name: "Save metadata" }));
-    expect(await screen.findByText("Document metadata saved.")).toBeInTheDocument();
+    await waitFor(() => expect(successToast).toHaveBeenCalledWith("Document metadata saved."));
     await user.click(screen.getByRole("button", { name: "Request deletion" }));
     await user.click(screen.getByRole("button", { name: "Confirm deletion" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -270,6 +300,7 @@ describe("Documents", () => {
       await screen.findByText("Deletion requested. This document is awaiting removal."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Request deletion" })).toBeDisabled();
+    await waitFor(() => expect(successToast).toHaveBeenCalledWith("Document deletion requested."));
   });
 
   it("attaches, updates tags, and detaches an existing document", async () => {
@@ -315,11 +346,18 @@ describe("Documents", () => {
     );
     await user.click(await screen.findByRole("button", { name: "Attach to workspace" }));
     expect(await screen.findByText("Attached to this workspace")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(successToast).toHaveBeenCalledWith("Document attached to workspace."),
+    );
     await user.type(screen.getByLabelText("Tags"), "research");
     await user.click(screen.getByRole("button", { name: "Save workspace details" }));
     await waitFor(() => expect(tags).toEqual(["research"]));
+    await waitFor(() => expect(successToast).toHaveBeenCalledWith("Workspace details saved."));
     await user.click(screen.getByRole("button", { name: "Detach from workspace" }));
     expect(await screen.findByText("Not attached to this workspace")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(successToast).toHaveBeenCalledWith("Document detached. It remains in your library."),
+    );
     expect(within(screen.getByRole("dialog")).getByText("Research notes")).toBeInTheDocument();
   });
 });

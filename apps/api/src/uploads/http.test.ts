@@ -36,7 +36,7 @@ import {
 import { createRequestIdMiddleware } from "../middleware/request-id.js";
 import {
   createWorkspaceDocumentRoutes,
-  createDocumentUploadRoutes,
+  createWorkspaceDocumentUploadRoutes,
 } from "../routes/v1/document.js";
 import { createUploadService } from "./service.js";
 import { uploadError } from "./errors.js";
@@ -169,7 +169,7 @@ describe("authenticated upload HTTP flow", () => {
     app.use("*", createSecurityHeaders(env));
     app.route(
       "/workspaces/:workspaceId/documents",
-      createDocumentUploadRoutes(requireAuth(), createCsrfProtection(env), {
+      createWorkspaceDocumentUploadRoutes(requireAuth(), createCsrfProtection(env), {
         execute,
         limits: {
           temporaryRoot: root,
@@ -195,8 +195,52 @@ describe("authenticated upload HTTP flow", () => {
       logger,
       uploadDocument: execute,
     });
-    return { app, application, validatePdf, documents, persistence };
+    return { app, application, validatePdf, documents, workspaces, jobs, persistence };
   }
+
+  it.each([false, true])(
+    "uploads to the library without a workspace (reuse=%s)",
+    async (reused) => {
+      const h = setup({ reused, owned: false });
+      const response = await h.application.fetch(
+        uploadRequest(
+          multipartBody("%PDF-1.7\n" + "x".repeat(1024 ** 2), '{"title":"Library PDF"}'),
+          { path: "/documents" },
+        ),
+      );
+      expect(response.status).toBe(reused ? 200 : 201);
+      expect(await response.json()).toMatchObject({
+        document: { id: document.id },
+        attachment: null,
+        reused,
+        jobId: job.id,
+      });
+      expect(h.workspaces.findById).not.toHaveBeenCalled();
+      expect(h.documents.attach).not.toHaveBeenCalled();
+      expect(h.jobs.create).toHaveBeenCalledTimes(reused ? 0 : 1);
+    },
+  );
+
+  it("authenticates library uploads before consuming their body", async () => {
+    const request = uploadRequest(undefined, { path: "/documents" });
+    expect((await setup({ authenticated: false }).application.fetch(request)).status).toBe(401);
+    expect(request.bodyUsed).toBe(false);
+  });
+
+  it("checks CSRF for library uploads before consuming their body", async () => {
+    const request = uploadRequest(undefined, { path: "/documents" });
+    request.headers.set("sec-fetch-site", "cross-site");
+    expect((await setup().application.fetch(request)).status).toBe(403);
+    expect(request.bodyUsed).toBe(false);
+  });
+
+  it("enforces file limits on library uploads", async () => {
+    const request = uploadRequest(undefined, {
+      path: "/documents",
+      contentLength: String(1024 ** 3),
+    });
+    expect((await setup().application.fetch(request)).status).toBe(413);
+  });
 
   it.each([false, true])(
     "returns the public response after publication (reuse=%s)",

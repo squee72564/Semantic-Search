@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState, type ChangeEvent, type SubmitEvent } from "react";
 import { Link } from "react-router";
@@ -93,7 +94,6 @@ function AttachmentEditor({
 }) {
   const queryClient = useQueryClient();
   const attachment = useQuery(documentAttachmentQuery(browserApiClient, workspaceId, documentId));
-  const [notice, setNotice] = useState("");
   const attach = useMutation({
     ...attachDocumentMutation(browserApiClient),
     onSuccess: () => refreshDocuments(queryClient),
@@ -108,7 +108,6 @@ function AttachmentEditor({
   });
   const pending = attach.isPending || update.isPending || detach.isPending;
   const resetFeedback = useCallback(() => {
-    setNotice("");
     attach.reset();
     update.reset();
     detach.reset();
@@ -124,7 +123,9 @@ function AttachmentEditor({
           documentId,
           attachment: metadata,
         });
-        setNotice(attachment.data ? "Workspace details saved." : "Document attached to workspace.");
+        toast.success(
+          attachment.data ? "Workspace details saved." : "Document attached to workspace.",
+        );
       } catch {
         /* Mutation errors are displayed below without discarding form values. */
       }
@@ -135,7 +136,7 @@ function AttachmentEditor({
     resetFeedback();
     try {
       await detach.mutateAsync({ workspaceId, documentId });
-      setNotice("Document detached. It remains in your library.");
+      toast.success("Document detached. It remains in your library.");
     } catch {
       /* Keep the current attachment and display its error. */
     }
@@ -201,7 +202,6 @@ function AttachmentEditor({
         </div>
       </fieldset>
       <DocumentError error={attach.error ?? update.error ?? detach.error} />
-      {notice ? <output className="block text-sm text-muted-foreground">{notice}</output> : null}
     </form>
   );
 }
