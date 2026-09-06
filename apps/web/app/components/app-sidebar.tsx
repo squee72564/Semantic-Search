@@ -1,5 +1,12 @@
 import { QueryErrorResetBoundary, useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { ChevronRight, FolderKanban, LayoutDashboard, LogOut, Sparkles } from "lucide-react";
+import {
+  ChevronRight,
+  FileText,
+  FolderKanban,
+  LayoutDashboard,
+  LogOut,
+  Sparkles,
+} from "lucide-react";
 import { Component, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router";
 
@@ -26,7 +33,10 @@ import { Spinner } from "~/components/ui/spinner";
 import { browserApiClient } from "~/lib/api.client";
 import { sidebarWorkspacesQuery } from "~/queries/workspaces";
 
-const navigation = [{ title: "Dashboard", to: "/dashboard", icon: LayoutDashboard }];
+const navigation = [
+  { title: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
+  { title: "Documents", to: "/documents", icon: FileText },
+];
 
 interface AppSidebarProps {
   user: {

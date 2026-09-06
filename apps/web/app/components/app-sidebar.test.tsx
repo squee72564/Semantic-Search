@@ -38,6 +38,11 @@ function renderSidebar(pathname = "/dashboard") {
 }
 
 describe("AppSidebar", () => {
+  it("links to the document library and marks it active", () => {
+    renderSidebar("/documents");
+    expect(screen.getByRole("link", { name: "Documents" })).toHaveAttribute("href", "/documents");
+    expect(screen.getByRole("link", { name: "Documents" })).toHaveAttribute("data-active", "true");
+  });
   it("keeps directory navigation separate from the expandable workspace submenu", async () => {
     const user = userEvent.setup();
     renderSidebar();
