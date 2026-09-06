@@ -5,6 +5,12 @@ export {
   type ClosePostgresConnFn,
 } from "./client.js";
 export { createUnitOfWork, type UnitOfWork, type RepositoryFactory } from "./unit_of_work/index.js";
+export {
+  createScopedPersistence,
+  PersistenceUnavailableError,
+  type ScopedPersistence,
+  type PersistenceOptions,
+} from "./unit_of_work/scoped.js";
 export { createCursorPage, type CursorPage } from "./repositories/pagination.js";
 export {
   createJobRepository,
