@@ -68,4 +68,4 @@ catalog:
   recharts: ^3.10.1
   "@base-ui/react": ^1.7.0
   busboy: ^1.6.0
-  '@types/busboy': ^1.5.4
+  "@types/busboy": ^1.5.4
