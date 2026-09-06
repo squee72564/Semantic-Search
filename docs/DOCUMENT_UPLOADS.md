@@ -36,9 +36,24 @@ Authentication and workspace ownership are checked before consuming the file. Th
 covers validation, upload, and database publication; excess requests receive HTTP 503. Provision
 temporary disk for at least `UPLOAD_MAX_FILE_BYTES * UPLOAD_MAX_CONCURRENT` per API process.
 
-The request deadline cancels streaming, PDF validation, and S3 calls. A database operation already in
-progress is allowed to settle; the service checks cancellation before the transaction can commit.
-Do not race a database promise against a timeout and then assume it rolled back. Temporary files are
+The request deadline cancels streaming, PDF validation, and S3 calls. Upload database work uses a
+separate pool with at most `UPLOAD_MAX_CONCURRENT` additional connections per API process (the
+ordinary API/auth pool still permits 25). A connection is leased only during a database phase, never
+while receiving a file, validating it, or calling S3. All PDFs are validated, including checksum reuse;
+existing records do not carry validation provenance.
+
+Database acquisition and connection establishment are bounded to five seconds, statement execution to
+15 seconds, lock waits to five seconds, and each database phase to 30 seconds or the remaining upload
+deadline, whichever is shorter. These defaults live in the scoped persistence constructor and pool. Cancelled
+waiters cannot execute later. Cancellation is checked inside the transaction before commit; an active
+database operation gets up to two seconds to settle before its exclusive client is terminated and
+discarded. Cleanup waits for settlement, so a response can extend beyond the request deadline by this
+grace period. Other upload clients and the API/auth pool are unaffected.
+
+Database capacity/timeouts return HTTP 503 `UPLOAD_DATABASE_UNAVAILABLE`; request interruption or
+deadline expiry returns HTTP 408 `UPLOAD_ABORTED`. A confirmed commit remains success if cancellation
+arrives while commit is settling. A lost commit response remains uncertain and retains the object.
+Closing a connection or racing a promise does not prove that a transaction rolled back. Temporary files are
 removed after request completion/failure, including disconnects. Cleanup errors are logged without
 changing an already committed success. Host-level temporary-directory maintenance must account for
 files left by a hard process or machine crash.
@@ -67,11 +82,36 @@ exists, these objects remain in storage. Monitor reconciliation and temporary-cl
 **Worker consumption is also deferred:** new jobs are durable and queued, but the current worker's
 poll callback does not process them. No UI or database schema migration accompanies this endpoint.
 
+## Code organization
+
+`apps/api/src/uploads/service.ts` owns upload admission, the request deadline, file and storage work,
+error mapping, and cleanup. It shows three database scopes: workspace ownership before receiving the
+file, checksum lookup after PDF validation, and the final publication transaction. No connection is
+leased during file reception, PDF validation, or S3 calls.
+
+`uploads/publication.ts` performs workspace revalidation, document resolution, attachment, and job
+creation or lookup using the transaction-bound repositories supplied by the service. It does not open
+another transaction. `uploads/types.ts` holds their shared contracts; the service still re-exports its
+original public types.
+
+`packages/db/src/unit_of_work/scoped.ts` remains the persistence entrypoint and constructor. Its
+`scoped/` directory separates contracts, database errors, pool lifecycle, and the Postgres connection
+adapter. The adapter owns the sockets needed for forced retirement; the pool owns acquisition,
+deadlines, settlement, and shutdown. Ordinary API operations continue to use `UnitOfWork` and its
+long-lived repositories. Scoped persistence instead leases exclusive database access for each callback.
+
+Callbacks must await database work and check the supplied phase signal before further work. That
+signal includes database phase expiry and shutdown as well as upload cancellation. The upload signal
+also remains necessary for HTTP error precedence. Cancellation checks and commit settlement must stay
+in their current order: a confirmed commit is success even if cancellation arrives during COMMIT.
+
 ## Verification
 
 Run unit tests and static checks with pnpm filters for `@repo/api`, `@repo/db`, `@repo/env`, and
 `@repo/object-storage`. Unit tests cover streaming, cancellation, authentication, ownership, public
 responses, duplicate resolution, publication failures, and PDF subprocess bounds.
+CI runs the real PDF and upload database integration suites on Node 24 against a disposable pgvector
+PostgreSQL service with all migrations applied. Local integration execution remains opt-in.
 
 To run real PDF checks, set `PDF_VALIDATION_INTEGRATION_TESTS=true` and, if needed, `PDFINFO_PATH`, then:
 
@@ -92,5 +132,7 @@ pnpm --filter @repo/db exec vitest run src/unit_of_work/index.integration.test.t
 
 These tests create isolated users and clean up only their records. They verify rollback across
 nested repository transactions, visibility before commit, concurrent checksum resolution, ownership,
-and both attachment/deletion orderings. Existing S3 contract tests remain separately opt-in with
+and both attachment/deletion orderings. Contention tests inspect PostgreSQL blocking backend IDs
+before releasing the competing transaction. The suite also checks statement and lock timeouts,
+connection reuse after rollback, and cancellation before commit. Existing S3 contract tests remain separately opt-in with
 their dedicated nonproduction storage settings.
