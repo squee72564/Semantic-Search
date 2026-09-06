@@ -3,7 +3,8 @@ import { createReadStream } from "node:fs";
 import {
   DocumentDeletingError,
   type Document,
-  type UnitOfWork,
+  PersistenceUnavailableError,
+  type ScopedPersistence,
   type WorkspaceDocument,
 } from "@repo/db";
 import type { ObjectStorage } from "@repo/object-storage";
@@ -47,7 +48,7 @@ export function createUploadService({
   maxConcurrent = 4,
   timeoutMs = 300_000,
 }: {
-  persistence: UnitOfWork<UploadRepositories>;
+  persistence: ScopedPersistence<UploadRepositories>;
   storage: Pick<ObjectStorage, "put" | "head">;
   validatePdf: ValidatePdf;
   logger: Pick<Logger, "warn" | "error">;
@@ -67,6 +68,7 @@ export function createUploadService({
     const timer = setTimeout(() => deadline.abort(), timeoutMs);
     timer.unref();
     const signal = AbortSignal.any([requestSignal, deadline.signal]);
+    const databaseOptions = { signal, deadline: Date.now() + timeoutMs };
     let prepared: PreparedUpload | undefined;
     let objectKey: string | undefined;
     let stage = "prepare";
@@ -79,16 +81,21 @@ export function createUploadService({
     };
     try {
       throwIfUploadAborted(signal);
-      await requireWorkspace(persistence.repositories);
+      await persistence.read(requireWorkspace, databaseOptions);
       prepared = await prepare(signal);
       await validatePdf(prepared.path, signal);
       throwIfUploadAborted(signal);
       const file = prepared;
-      const existing = await persistence.repositories.documents.findBySha256(userId, file.sha256);
+      const existing = await persistence.read(
+        (repositories) => repositories.documents.findBySha256(userId, file.sha256),
+        databaseOptions,
+      );
       if (existing?.status === "deleting") throw new DocumentDeletingError();
-      let allocatedId: string | undefined;
+      let publication:
+        | { kind: "existing"; id: string }
+        | { kind: "new"; id: string; objectKey: string };
       if (!existing) {
-        allocatedId = randomUUID();
+        const allocatedId = randomUUID();
         objectKey = `documents/${allocatedId}/original.pdf`;
         stage = "put";
         const body = createReadStream(file.path);
@@ -122,75 +129,86 @@ export function createUploadService({
             "The stored PDF could not be verified. Please retry.",
           );
         }
-      }
+        publication = { kind: "new", id: allocatedId, objectKey };
+      } else publication = { kind: "existing", id: existing.id };
       throwIfUploadAborted(signal);
       stage = "transaction";
-      const result = await persistence.transaction(async (repositories): Promise<UploadResult> => {
-        await requireWorkspace(repositories);
-        const resolved = existing
-          ? { document: await repositories.documents.findById(userId, existing.id), created: false }
-          : await repositories.documents.createOrFind(userId, {
-              id: allocatedId!,
-              originalObjectKey: objectKey!,
-              originalContentType: "application/pdf",
-              originalFilename: file.filename,
-              originalSizeBytes: file.size,
-              sha256: file.sha256,
-              title: file.metadata.title,
-              description: file.metadata.description,
-              customMetadata: file.metadata.customMetadata,
-            });
-        if (!resolved.document)
-          throw uploadError(
-            409,
-            "DOCUMENT_CHANGED",
-            "The document changed during upload. Please retry.",
+      const result = await persistence.transaction(
+        async (repositories, databaseSignal): Promise<UploadResult> => {
+          await requireWorkspace(repositories);
+          databaseSignal.throwIfAborted();
+          const resolved =
+            publication.kind === "existing"
+              ? {
+                  document: await repositories.documents.findById(userId, publication.id),
+                  created: false,
+                }
+              : await repositories.documents.createOrFind(userId, {
+                  id: publication.id,
+                  originalObjectKey: publication.objectKey,
+                  originalContentType: "application/pdf",
+                  originalFilename: file.filename,
+                  originalSizeBytes: file.size,
+                  sha256: file.sha256,
+                  title: file.metadata.title,
+                  description: file.metadata.description,
+                  customMetadata: file.metadata.customMetadata,
+                });
+          if (!resolved.document)
+            throw uploadError(
+              409,
+              "DOCUMENT_CHANGED",
+              "The document changed during upload. Please retry.",
+            );
+          if (resolved.document.status === "deleting") throw new DocumentDeletingError();
+          databaseSignal.throwIfAborted();
+          const attachment = await repositories.documents.attach(
+            userId,
+            workspaceId,
+            resolved.document.id,
+            {
+              displayTitle: file.metadata.displayTitle,
+              tags: file.metadata.tags,
+            },
           );
-        if (resolved.document.status === "deleting") throw new DocumentDeletingError();
-        const attachment = await repositories.documents.attach(
-          userId,
-          workspaceId,
-          resolved.document.id,
-          {
-            displayTitle: file.metadata.displayTitle,
-            tags: file.metadata.tags,
-          },
-        );
-        if (!attachment)
-          throw uploadError(
-            404,
-            "WORKSPACE_DOCUMENT_NOT_FOUND",
-            "The document or workspace is no longer available.",
-          );
-        const job = resolved.created
-          ? (
-              await repositories.jobs.create(userId, {
-                kind: "document_processing",
-                documentId: resolved.document.id,
-                startStage: "preflight",
-                configurationSchemaVersion: 1,
-                configuration: {},
-                maxAttempts: 3,
-                idempotencyKey: `document:${resolved.document.id}:initial-processing`,
-              })
-            ).job
-          : await repositories.jobs.findActiveDocumentJob(userId, resolved.document.id);
-        if (
-          job &&
-          (job.userId !== userId ||
-            job.documentId !== resolved.document.id ||
-            job.kind !== "document_processing")
-        ) {
-          throw new Error("Processing job does not match the uploaded document");
-        }
-        throwIfUploadAborted(signal);
-        return {
-          document: resolved.document,
-          attachment,
-          jobId: job?.id ?? null,
-          reused: !resolved.created,
-        };
-      });
+          if (!attachment)
+            throw uploadError(
+              404,
+              "WORKSPACE_DOCUMENT_NOT_FOUND",
+              "The document or workspace is no longer available.",
+            );
+          databaseSignal.throwIfAborted();
+          const job = resolved.created
+            ? (
+                await repositories.jobs.create(userId, {
+                  kind: "document_processing",
+                  documentId: resolved.document.id,
+                  startStage: "preflight",
+                  configurationSchemaVersion: 1,
+                  configuration: {},
+                  maxAttempts: 3,
+                  idempotencyKey: `document:${resolved.document.id}:initial-processing`,
+                })
+              ).job
+            : await repositories.jobs.findActiveDocumentJob(userId, resolved.document.id);
+          if (
+            job &&
+            (job.userId !== userId ||
+              job.documentId !== resolved.document.id ||
+              job.kind !== "document_processing")
+          ) {
+            throw new Error("Processing job does not match the uploaded document");
+          }
+          throwIfUploadAborted(signal);
+          return {
+            document: resolved.document,
+            attachment,
+            jobId: job?.id ?? null,
+            reused: !resolved.created,
+          };
+        },
+        databaseOptions,
+      );
       published = result.document.originalObjectKey === objectKey;
       if (objectKey && !published)
         logger.warn(
@@ -204,13 +222,15 @@ export function createUploadService({
           { requestId, objectKey, stage },
           "publication outcome requires delayed object reconciliation",
         );
-      if (error instanceof DocumentDeletingError)
-        throw uploadError(
-          409,
-          "DOCUMENT_DELETING",
-          "This document is being deleted. Please retry later.",
-        );
       throwIfUploadAborted(signal);
+      if (error instanceof PersistenceUnavailableError) {
+        logger.warn({ err: error, requestId, stage: error.phase }, "upload database unavailable");
+        throw uploadError(
+          503,
+          "UPLOAD_DATABASE_UNAVAILABLE",
+          "Upload persistence is temporarily unavailable. Please retry shortly.",
+        );
+      }
       throw error;
     } finally {
       clearTimeout(timer);

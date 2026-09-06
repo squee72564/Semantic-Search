@@ -144,16 +144,7 @@ export const createRequestBodyLimit = (env: ApiEnv): ApiMiddleware => {
       });
     },
   });
-  return (context, next) => {
-    // The upload parser enforces actual streamed bytes after auth and ownership checks.
-    // Hono's default limiter buffers requests without Content-Length.
-    if (
-      context.req.method === "POST" &&
-      /^\/workspaces\/[^/]+\/documents\/?$/u.test(context.req.path)
-    )
-      return next();
-    return standardLimit(context, next);
-  };
+  return standardLimit;
 };
 
 export const createSecurityMiddleware = (env: ApiEnv): ApiMiddleware[] => [

@@ -2,7 +2,14 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import type { DocumentRepository, JobRepository, UnitOfWork, WorkspaceRepository } from "@repo/db";
+import {
+  DocumentDeletingError,
+  PersistenceUnavailableError,
+  type DocumentRepository,
+  type JobRepository,
+  type ScopedPersistence,
+  type WorkspaceRepository,
+} from "@repo/db";
 import { apiEnvSchema } from "@repo/env/api";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,13 +23,21 @@ import {
   workspace,
   workspaceId,
 } from "../../test/upload-fixtures.js";
-import { createAuthenticationMiddleware } from "../lib/auth.js";
+import { createAuthenticationMiddleware, type ApiAuthentication } from "../lib/auth.js";
+import { createApp } from "../app.js";
 import type { AppVariables } from "../lib/context.js";
 import { createLogger } from "../lib/logger.js";
 import { createErrorHandler } from "../http/error-handler.js";
-import { createCsrfProtection, createSecurityMiddleware } from "../middleware/security.js";
+import {
+  createCsrfProtection,
+  createSecurityHeaders,
+  createRequestBodyLimit,
+} from "../middleware/security.js";
 import { createRequestIdMiddleware } from "../middleware/request-id.js";
-import { createWorkspaceDocumentRoutes } from "../routes/v1/document.js";
+import {
+  createWorkspaceDocumentRoutes,
+  createDocumentUploadRoutes,
+} from "../routes/v1/document.js";
 import { createUploadService } from "./service.js";
 import { uploadError } from "./errors.js";
 
@@ -76,9 +91,9 @@ describe("authenticated upload HTTP flow", () => {
       findActiveDocumentJob: vi.fn<JobRepository["findActiveDocumentJob"]>().mockResolvedValue(job),
     };
     const repositories = { documents, workspaces, jobs };
-    const persistence: UnitOfWork<typeof repositories> = {
-      repositories,
-      transaction: (operation) => operation(repositories),
+    const persistence: ScopedPersistence<typeof repositories> = {
+      read: (operation, options) => operation(repositories, options.signal),
+      transaction: (operation, options) => operation(repositories, options.signal),
     };
     const logger = createLogger("test");
     logger.level = "silent";
@@ -122,41 +137,39 @@ describe("authenticated upload HTTP flow", () => {
         head: async () => stored,
       },
     });
-    const { requireAuth } = createAuthenticationMiddleware({
-      auth: {
-        handler: () => new Response(),
-        api: {
-          getSession: async () =>
-            authenticated
-              ? {
-                  user: {
-                    id: userId,
-                    name: "Test",
-                    email: "test@example.invalid",
-                    emailVerified: true,
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                  },
-                  session: {
-                    id: "test-session",
-                    userId,
-                    token: "test-token",
-                    expiresAt: new Date(Date.now() + 100000),
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                  },
-                }
-              : null,
-        },
+    const auth: ApiAuthentication = {
+      handler: () => new Response(),
+      api: {
+        getSession: async () =>
+          authenticated
+            ? {
+                user: {
+                  id: userId,
+                  name: "Test",
+                  email: "test@example.invalid",
+                  emailVerified: true,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                },
+                session: {
+                  id: "test-session",
+                  userId,
+                  token: "test-token",
+                  expiresAt: new Date(Date.now() + 100000),
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                },
+              }
+            : null,
       },
-    });
+    };
+    const { requireAuth } = createAuthenticationMiddleware({ auth });
     const app = new Hono<{ Variables: AppVariables }>();
     app.use("*", createRequestIdMiddleware());
-    app.use("*", ...createSecurityMiddleware(env));
-    app.use("*", createCsrfProtection(env));
+    app.use("*", createSecurityHeaders(env));
     app.route(
       "/workspaces/:workspaceId/documents",
-      createWorkspaceDocumentRoutes(documents, workspaces, requireAuth(), {
+      createDocumentUploadRoutes(requireAuth(), createCsrfProtection(env), {
         execute,
         limits: {
           temporaryRoot: root,
@@ -166,8 +179,23 @@ describe("authenticated upload HTTP flow", () => {
         },
       }),
     );
+    app.use("*", createRequestBodyLimit(env));
+    app.post("/api/auth/test", (context) => context.json({ ok: true }));
+    app.use("*", createCsrfProtection(env));
+    app.route(
+      "/workspaces/:workspaceId/documents",
+      createWorkspaceDocumentRoutes(documents, workspaces, requireAuth()),
+    );
     app.onError(createErrorHandler(env, logger));
-    return { app, validatePdf, documents };
+    const application = createApp({
+      auth,
+      documents,
+      workspaces,
+      env,
+      logger,
+      uploadDocument: execute,
+    });
+    return { app, application, validatePdf, documents, persistence };
   }
 
   it.each([false, true])(
@@ -198,7 +226,7 @@ describe("authenticated upload HTTP flow", () => {
     "rejects auth=%s ownership=%s before reading the upload",
     async (authenticated, owned, status) => {
       const request = uploadRequest();
-      const response = await setup({ authenticated, owned }).app.fetch(request);
+      const response = await setup({ authenticated, owned }).application.fetch(request);
       expect(response.status).toBe(status);
       expect(request.bodyUsed).toBe(false);
       expect(await readdir(root)).toEqual([]);
@@ -208,7 +236,7 @@ describe("authenticated upload HTTP flow", () => {
   it("rejects cross-site multipart requests before reading bytes", async () => {
     const request = uploadRequest();
     request.headers.set("sec-fetch-site", "cross-site");
-    expect((await setup().app.fetch(request)).status).toBe(403);
+    expect((await setup().application.fetch(request)).status).toBe(403);
     expect(request.bodyUsed).toBe(false);
   });
 
@@ -258,5 +286,79 @@ describe("authenticated upload HTTP flow", () => {
     });
     expect(h.documents.createOrFind).not.toHaveBeenCalled();
     expect(await readdir(root)).toEqual([]);
+  });
+
+  it.each([
+    ["/api/auth/test", "POST"],
+    ["/unknown", "POST"],
+    [`/workspaces/${workspaceId}/documents`, "PATCH"],
+    [`/workspaces/${workspaceId}/documents/extra`, "POST"],
+  ])("keeps the default body limit for %s %s", async (path, method) => {
+    const response = await setup().application.request(path, {
+      method,
+      body: "x".repeat(1024 ** 2 + 1),
+      headers: { "content-type": "application/json" },
+    });
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ code: "REQUEST_BODY_TOO_LARGE" });
+  });
+
+  it("keeps Better Auth outside generic form CSRF", async () => {
+    const response = await setup().application.request("/api/auth/test", {
+      method: "POST",
+      body: "form=value",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it.each(["upload", "attachment"])(
+    "maps deleting documents consistently for %s",
+    async (route) => {
+      const h = setup();
+      h.documents.attach = async () => {
+        throw new DocumentDeletingError();
+      };
+      const response =
+        route === "upload"
+          ? await h.app.fetch(uploadRequest())
+          : await h.app.request(`/workspaces/${workspaceId}/documents/${document.id}`, {
+              method: "PUT",
+              body: "{}",
+              headers: { "content-type": "application/json" },
+            });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ code: "DOCUMENT_DELETING" });
+      expect(await readdir(root)).toEqual([]);
+    },
+  );
+
+  it("maps database timeout to a retryable service response", async () => {
+    const h = setup();
+    h.persistence.transaction = async () => {
+      throw new PersistenceUnavailableError("transaction");
+    };
+    const response = await h.app.fetch(uploadRequest());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: "UPLOAD_DATABASE_UNAVAILABLE" });
+    expect(await readdir(root)).toEqual([]);
+  });
+
+  it("streams a large upload through the production application middleware", async () => {
+    const h = setup();
+    const response = await h.application.fetch(
+      uploadRequest(multipartBody(Buffer.alloc(1024 ** 2 + 1))),
+    );
+    expect(response.status).toBe(201);
+    expect(response.headers.get("x-request-id")).toBeTruthy();
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("preserves the request-aborted response", async () => {
+    const request = new Request(uploadRequest(), { signal: AbortSignal.abort() });
+    const response = await setup().application.fetch(request);
+    expect(response.status).toBe(408);
+    expect(await response.json()).toMatchObject({ code: "UPLOAD_ABORTED" });
+    expect(request.bodyUsed).toBe(false);
   });
 });

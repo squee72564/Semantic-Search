@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import { type DocumentRepository, type WorkspaceRepository } from "@repo/db";
 import { createHealthRoutes } from "./routes/v1/health.js";
-import { createDocumentRoutes, createWorkspaceDocumentRoutes } from "./routes/v1/document.js";
+import {
+  createDocumentRoutes,
+  createWorkspaceDocumentRoutes,
+  createDocumentUploadRoutes,
+} from "./routes/v1/document.js";
 import { createWorkspaceRoutes } from "./routes/v1/workspace.js";
 import type { AppVariables } from "./lib/context.js";
 import { type ApiEnv } from "@repo/env/api";
@@ -10,7 +14,11 @@ import type { Logger } from "./lib/logger.js";
 import { createNotFoundHandler } from "./http/not-found.js";
 import { createRequestIdMiddleware } from "./middleware/request-id.js";
 import { createRequestLoggerMiddleware } from "./middleware/request-logger.js";
-import { createCsrfProtection, createSecurityMiddleware } from "./middleware/security.js";
+import {
+  createCsrfProtection,
+  createSecurityHeaders,
+  createRequestBodyLimit,
+} from "./middleware/security.js";
 import { type ApiAuthentication, createAuthenticationMiddleware } from "./lib/auth.js";
 import type { UploadDocument } from "./uploads/service.js";
 
@@ -35,7 +43,22 @@ export function createApp({
 
   app.use("*", createRequestIdMiddleware());
   app.use("*", createRequestLoggerMiddleware(logger));
-  app.use("*", ...createSecurityMiddleware(env));
+  app.use("*", createSecurityHeaders(env));
+
+  const { requireAuth } = createAuthenticationMiddleware({ auth });
+  // Uploads enforce streamed byte limits after CSRF, authentication, and ownership checks.
+  const uploads = app.route(
+    "/workspaces/:workspaceId/documents",
+    createDocumentUploadRoutes(requireAuth(), createCsrfProtection(env), {
+      execute: uploadDocument,
+      limits: {
+        maxFileBytes: env.UPLOAD_MAX_FILE_BYTES,
+        maxMetadataBytes: env.UPLOAD_MAX_METADATA_BYTES,
+        maxOverheadBytes: env.UPLOAD_MAX_OVERHEAD_BYTES,
+      },
+    }),
+  );
+  uploads.use("*", createRequestBodyLimit(env));
 
   // Better Auth performs endpoint-aware origin, CSRF, and protocol validation.
   // Register it before the generic form CSRF middleware to avoid rejecting
@@ -44,22 +67,13 @@ export function createApp({
 
   app.use("*", createCsrfProtection(env));
 
-  const { requireAuth } = createAuthenticationMiddleware({ auth });
-
-  const routes = app
+  const routes = uploads
     .route("/health", createHealthRoutes())
     .route("/workspaces", createWorkspaceRoutes(workspaces, requireAuth()))
     .route("/documents", createDocumentRoutes(documents, requireAuth()))
     .route(
       "/workspaces/:workspaceId/documents",
-      createWorkspaceDocumentRoutes(documents, workspaces, requireAuth(), {
-        execute: uploadDocument,
-        limits: {
-          maxFileBytes: env.UPLOAD_MAX_FILE_BYTES,
-          maxMetadataBytes: env.UPLOAD_MAX_METADATA_BYTES,
-          maxOverheadBytes: env.UPLOAD_MAX_OVERHEAD_BYTES,
-        },
-      }),
+      createWorkspaceDocumentRoutes(documents, workspaces, requireAuth()),
     );
 
   routes.onError(createErrorHandler(env, logger));

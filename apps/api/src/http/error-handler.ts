@@ -1,8 +1,7 @@
 import type { ErrorHandler } from "hono";
 import { type AppVariables, REQUEST_ID_CONTEXT_KEY } from "../lib/context.js";
-import { toApiError } from "../lib/error.js";
+import { ApiError, toApiError } from "../lib/error.js";
 import { DocumentDeletingError } from "@repo/db";
-import { uploadError } from "../uploads/errors.js";
 import type { ApiEnv } from "@repo/env/api";
 import type { Logger } from "../lib/logger.js";
 
@@ -11,11 +10,13 @@ export function createErrorHandler(env: ApiEnv, logger: Logger) {
     const requestId = context.get(REQUEST_ID_CONTEXT_KEY);
     const apiError = toApiError(
       error instanceof DocumentDeletingError
-        ? uploadError(
-            409,
-            "DOCUMENT_DELETING",
-            "This document is being deleted. Please retry later.",
-          )
+        ? new ApiError({
+            status: 409,
+            code: "DOCUMENT_DELETING",
+            message: error.message,
+            userMessage: "This document is being deleted. Please retry later.",
+            expose: true,
+          })
         : error,
       {
         metadata: {

@@ -1,5 +1,5 @@
 import { createAuth } from "@repo/auth";
-import { createDatabase, createUnitOfWork } from "@repo/db";
+import { createDatabase, createUnitOfWork, createScopedPersistence } from "@repo/db";
 import { readApiEnv } from "@repo/env/api";
 import { createApp } from "./app.js";
 import { createLogger, flushLogger, type Logger } from "./lib/logger.js";
@@ -13,6 +13,7 @@ async function main(): Promise<void> {
   let logger: Logger | undefined;
   let closeDatabase: (() => Promise<void>) | undefined;
   let storage: ObjectStorage | undefined;
+  let closeUploads: (() => Promise<void>) | undefined;
 
   try {
     const env = readApiEnv();
@@ -30,8 +31,13 @@ async function main(): Promise<void> {
       region: env.S3_REGION,
       forcePathStyle: env.S3_FORCE_PATH_STYLE,
     });
+
+    const uploadPersistence = createScopedPersistence(env.DATABASE_URL, createApiRepositories, {
+      max: env.UPLOAD_MAX_CONCURRENT,
+    });
+    closeUploads = () => uploadPersistence.close();
     const uploadDocument = createUploadService({
-      persistence,
+      persistence: uploadPersistence,
       storage,
       logger,
       validatePdf: createPdfValidator({
@@ -64,9 +70,13 @@ async function main(): Promise<void> {
       app,
       close: async () => {
         try {
-          storage?.close();
+          await closeUploads?.();
         } finally {
-          await close();
+          try {
+            storage?.close();
+          } finally {
+            await close();
+          }
         }
       },
       env,
@@ -74,6 +84,14 @@ async function main(): Promise<void> {
     });
   } catch (error) {
     process.exitCode = 1;
+    try {
+      await closeUploads?.();
+    } catch (closeError) {
+      logger?.error(
+        { err: closeError },
+        "failed to close upload persistence after initialization failure",
+      );
+    }
     storage?.close();
 
     if (!logger) {

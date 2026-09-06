@@ -2,8 +2,14 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import type { DocumentRepository, JobRepository, WorkspaceRepository, UnitOfWork } from "@repo/db";
-import { DocumentDeletingError } from "@repo/db";
+import type {
+  DocumentRepository,
+  JobRepository,
+  WorkspaceRepository,
+  ScopedPersistence,
+  PersistenceOptions,
+} from "@repo/db";
+import { DocumentDeletingError, PersistenceUnavailableError } from "@repo/db";
 import type { ObjectStorage } from "@repo/object-storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -29,7 +35,7 @@ describe("document upload application service", () => {
     await rm(directory, { recursive: true, force: true });
   });
 
-  function setup(options: { timeoutMs?: number; maxConcurrent?: number } = {}) {
+  function setup(serviceOptions: { timeoutMs?: number; maxConcurrent?: number } = {}) {
     const repositories = {
       documents: {
         findBySha256: vi.fn<DocumentRepository["findBySha256"]>().mockResolvedValue(null),
@@ -67,11 +73,14 @@ describe("document upload application service", () => {
     };
     type Repositories = typeof repositories;
     let inTransaction = false;
-    const transaction = vi.fn<UnitOfWork<Repositories>["transaction"]>(
-      async <T>(operation: (repositories: Repositories) => Promise<T>) => {
+    const transaction = vi.fn<ScopedPersistence<Repositories>["transaction"]>(
+      async <T>(
+        operation: (repositories: Repositories, signal: AbortSignal) => Promise<T>,
+        options: PersistenceOptions,
+      ) => {
         inTransaction = true;
         try {
-          return await operation(repositories);
+          return await operation(repositories, options.signal);
         } finally {
           inTransaction = false;
         }
@@ -121,14 +130,14 @@ describe("document upload application service", () => {
     const validatePdf = vi.fn<() => Promise<void>>(async () => {});
     const execute = createUploadService({
       persistence: {
-        repositories,
+        read: (operation, options) => operation(repositories, options.signal),
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Vitest erases generic callback return types; this mock returns the operation's result.
-        transaction: transaction as UnitOfWork<Repositories>["transaction"],
+        transaction: transaction as ScopedPersistence<Repositories>["transaction"],
       },
       storage,
       validatePdf,
       logger,
-      ...options,
+      ...serviceOptions,
     });
     return { execute, input, repositories, transaction, storage, cleanup, logger, validatePdf };
   }
@@ -217,7 +226,7 @@ describe("document upload application service", () => {
     if (stage === "lookup")
       h.repositories.documents.findBySha256.mockResolvedValue({ ...document, status: "deleting" });
     else h.repositories.documents.attach.mockRejectedValue(new DocumentDeletingError());
-    await expect(h.execute(h.input)).rejects.toMatchObject({ status: 409 });
+    await expect(h.execute(h.input)).rejects.toBeInstanceOf(DocumentDeletingError);
     expect(h.repositories.jobs.create).not.toHaveBeenCalled();
     expect(h.cleanup).toHaveBeenCalledOnce();
   });
@@ -273,8 +282,8 @@ describe("document upload application service", () => {
     const gate = new Promise<void>((resolve) => {
       commit = resolve;
     });
-    h.transaction.mockImplementation(async (operation) => {
-      const result = await operation(h.repositories);
+    h.transaction.mockImplementation(async (operation, options) => {
+      const result = await operation(h.repositories, options.signal);
       await gate;
       return result;
     });
@@ -291,8 +300,8 @@ describe("document upload application service", () => {
 
   it("retains the uploaded object after an uncertain commit outcome", async () => {
     const h = setup();
-    h.transaction.mockImplementation(async (operation) => {
-      await operation(h.repositories);
+    h.transaction.mockImplementation(async (operation, options) => {
+      await operation(h.repositories, options.signal);
       throw new Error("connection lost during commit");
     });
     await expect(h.execute(h.input)).rejects.toThrow("connection lost during commit");
@@ -323,5 +332,21 @@ describe("document upload application service", () => {
     await expect(h.execute(h.input)).rejects.toThrow("invalid PDF");
     expect(h.storage.put).not.toHaveBeenCalled();
     expect(h.cleanup).toHaveBeenCalledOnce();
+  });
+
+  it("releases upload capacity and retains the object after a database timeout", async () => {
+    const h = setup({ maxConcurrent: 1 });
+    h.transaction.mockRejectedValueOnce(new PersistenceUnavailableError("transaction"));
+    await expect(h.execute(h.input)).rejects.toMatchObject({
+      status: 503,
+      code: "UPLOAD_DATABASE_UNAVAILABLE",
+    });
+    expect(h.cleanup).toHaveBeenCalledOnce();
+    expect(h.logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ objectKey: expect.any(String), stage: "transaction" }),
+      expect.any(String),
+    );
+    h.repositories.workspaces.findById.mockResolvedValue(null);
+    await expect(h.execute(h.input)).rejects.toMatchObject({ status: 404 });
   });
 });

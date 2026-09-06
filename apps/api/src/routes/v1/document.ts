@@ -177,44 +177,46 @@ export function createDocumentRoutes(
     );
 }
 
+export function createDocumentUploadRoutes(
+  requireAuth: MiddlewareHandler<AppEnv>,
+  csrf: MiddlewareHandler<AppEnv>,
+  upload: { execute: UploadDocument; limits: MultipartLimits },
+) {
+  return new Hono<AppEnv>().post(
+    "/",
+    csrf,
+    requireAuth,
+    zValidator("param", workspaceDocumentsParamsSchema, documentValidationHook),
+    async (context) => {
+      const user = getAuthenticatedUser(context);
+      const { workspaceId } = context.req.valid("param");
+      const result = await upload.execute({
+        userId: user.id,
+        workspaceId,
+        requestId: context.get("requestId"),
+        signal: context.req.raw.signal,
+        prepare: (signal) => prepareMultipartUpload(context.req.raw, upload.limits, signal),
+      });
+      return context.json(
+        {
+          document: toDocumentResponse(result.document),
+          attachment: toWorkspaceDocumentResponse(result.attachment),
+          jobId: result.jobId,
+          reused: result.reused,
+        },
+        result.reused ? 200 : 201,
+      );
+    },
+  );
+}
+
 export function createWorkspaceDocumentRoutes(
   documentRepository: DocumentRepository,
   workspaceRepository: WorkspaceRepository,
   requireAuth: MiddlewareHandler<AppEnv>,
-  upload?: { execute: UploadDocument; limits: MultipartLimits },
 ) {
   return new Hono<AppEnv>()
     .use("*", requireAuth)
-    .post(
-      "/",
-      zValidator("param", workspaceDocumentsParamsSchema, documentValidationHook),
-      async (context) => {
-        if (!upload)
-          throw new ApiError({
-            status: 503,
-            code: "UPLOAD_UNAVAILABLE",
-            message: "Uploads are not configured",
-          });
-        const user = getAuthenticatedUser(context);
-        const { workspaceId } = context.req.valid("param");
-        const result = await upload.execute({
-          userId: user.id,
-          workspaceId,
-          requestId: context.get("requestId"),
-          signal: context.req.raw.signal,
-          prepare: (signal) => prepareMultipartUpload(context.req.raw, upload.limits, signal),
-        });
-        return context.json(
-          {
-            document: toDocumentResponse(result.document),
-            attachment: toWorkspaceDocumentResponse(result.attachment),
-            jobId: result.jobId,
-            reused: result.reused,
-          },
-          result.reused ? 200 : 201,
-        );
-      },
-    )
     .get(
       "/",
       zValidator("param", workspaceDocumentsParamsSchema, documentValidationHook),
