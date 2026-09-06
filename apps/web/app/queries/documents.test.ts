@@ -4,6 +4,10 @@ import { QueryClient, MutationObserver } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import {
+  workspaceDocumentsQuery,
+  workspaceDocumentMembershipQuery,
+  documentQueryKeys,
+  refreshDocuments,
   attachDocumentMutation,
   deleteDocumentMutation,
   detachDocumentMutation,
@@ -15,7 +19,7 @@ import {
   uploadDocumentMutation,
 } from "./documents";
 import { mockApi } from "~/test-setup";
-import { documentFixture, documentPage } from "~/test/document-fixtures";
+import { documentFixture, documentPage, workspaceDocumentPage } from "~/test/document-fixtures";
 
 const browserApiClient = createApiClient("http://localhost:3000/api");
 
@@ -53,13 +57,14 @@ describe("document API queries", () => {
     ).resolves.toMatchObject({ attachment: null, reused: false });
   });
 
-  it("sends list filters and reads a document detail", async () => {
+  it("sends list filters, isolates searches in cache, and reads a document detail", async () => {
     mockApi.use(
       http.get("*/api/documents", ({ request }) => {
         const params = new URL(request.url).searchParams;
         expect(params.get("workspaceId")).toBe("workspace-one");
         expect(params.get("status")).toBe("ready");
         expect(params.get("tag")).toBe("research");
+        expect(params.get("search")).toBe("coastal");
         expect(params.get("cursor")).toBe("page-two");
         return HttpResponse.json(documentPage);
       }),
@@ -72,10 +77,14 @@ describe("document API queries", () => {
           workspaceId: "workspace-one",
           status: "ready",
           tag: "research",
+          search: "coastal",
           cursor: "page-two",
         }),
       ),
     ).toEqual(documentPage);
+    expect(
+      cache.getQueryData(documentsQuery(browserApiClient, { search: "inland" }).queryKey),
+    ).toBeUndefined();
     expect(await cache.fetchQuery(documentQuery(browserApiClient, documentFixture.id))).toEqual({
       item: documentFixture,
     });
@@ -206,5 +215,97 @@ describe("document API queries", () => {
         signal: new AbortController().signal,
       }),
     ).resolves.toMatchObject({ reused: false });
+  });
+});
+
+describe("workspace document queries", () => {
+  it("sends workspace filters and keeps cache entries isolated", async () => {
+    mockApi.use(
+      http.get("*/api/workspaces/:workspaceId/documents", ({ request, params }) => {
+        expect(params.workspaceId).toBe("one");
+        const query = new URL(request.url).searchParams;
+        expect(query.get("status")).toBe("ready");
+        expect(query.get("tag")).toBe("research");
+        expect(query.get("cursor")).toBe("next");
+        return HttpResponse.json(workspaceDocumentPage);
+      }),
+    );
+    const cache = client();
+    const options = workspaceDocumentsQuery(browserApiClient, "one", {
+      status: "ready",
+      tag: "research",
+      cursor: "next",
+    });
+    expect(await cache.fetchQuery(options)).toEqual(workspaceDocumentPage);
+    expect(
+      cache.getQueryData(workspaceDocumentsQuery(browserApiClient, "two", {}).queryKey),
+    ).toBeUndefined();
+    cache.setQueryData(documentQueryKeys.membership("one"), [documentFixture.id]);
+    await refreshDocuments(cache);
+    expect(cache.getQueryState(options.queryKey)?.isInvalidated).toBe(true);
+    expect(cache.getQueryState(documentQueryKeys.membership("one"))?.isInvalidated).toBe(true);
+  });
+
+  it("collects all membership pages and rejects partial results", async () => {
+    let fail = false;
+    const cursors: Array<string | null> = [];
+    mockApi.use(
+      http.get("*/api/workspaces/:workspaceId/documents", ({ request }) => {
+        const query = new URL(request.url).searchParams;
+        expect(query.get("limit")).toBe("100");
+        expect(query.has("status")).toBe(false);
+        const cursor = query.get("cursor");
+        cursors.push(cursor);
+        if (cursor && fail)
+          return HttpResponse.json({ detail: "Membership unavailable." }, { status: 503 });
+        return HttpResponse.json(
+          cursor ? workspaceDocumentPage : { items: [], pageInfo: { nextCursor: "next" } },
+        );
+      }),
+    );
+    expect(
+      await client().fetchQuery(workspaceDocumentMembershipQuery(browserApiClient, "one")),
+    ).toEqual([documentFixture.id]);
+    expect(cursors).toEqual([null, "next"]);
+    fail = true;
+    const cache = client();
+    const options = workspaceDocumentMembershipQuery(browserApiClient, "one");
+    await expect(cache.fetchQuery(options)).rejects.toMatchObject({
+      status: 503,
+      message: "Membership unavailable.",
+    });
+    expect(cache.getQueryData(options.queryKey)).toBeUndefined();
+  });
+
+  it.each(["list", "membership"])("aborts an in-flight %s request", async (kind) => {
+    const started = Promise.withResolvers<void>();
+    const aborted = Promise.withResolvers<void>();
+    mockApi.use(
+      http.get("*/api/workspaces/:workspaceId/documents", async ({ request }) => {
+        started.resolve();
+        await new Promise<void>((resolve) => {
+          request.signal.addEventListener(
+            "abort",
+            () => {
+              aborted.resolve();
+              resolve();
+            },
+            { once: true },
+          );
+        });
+        return new HttpResponse(null, { status: 408 });
+      }),
+    );
+    const cache = client();
+    const promise =
+      kind === "list"
+        ? cache.fetchQuery(workspaceDocumentsQuery(browserApiClient, "one"))
+        : cache.fetchQuery(workspaceDocumentMembershipQuery(browserApiClient, "one"));
+    const settled = promise.catch(() => undefined);
+    await started.promise;
+    await cache.cancelQueries({ queryKey: documentQueryKeys.workspace("one") });
+    await aborted.promise;
+    await settled;
+    expect(cache.isFetching({ queryKey: documentQueryKeys.workspace("one") })).toBe(0);
   });
 });

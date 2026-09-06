@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState, type ChangeEvent, type SubmitEvent } from "react";
 import { Link } from "react-router";
 import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Spinner } from "~/components/ui/spinner";
 import { browserApiClient } from "~/lib/api.client";
@@ -16,6 +15,7 @@ import {
 } from "~/queries/documents";
 import { sidebarWorkspacesQuery } from "~/queries/workspaces";
 import {
+  AttachmentFields,
   DocumentError,
   readAttachmentMetadata,
   WorkspaceSelect,
@@ -165,27 +165,11 @@ function AttachmentEditor({
         disabled={disabled || pending}
         className="space-y-4"
       >
-        <div className="space-y-2">
-          <Label htmlFor="attachment-title">Workspace display title</Label>
-          <Input
-            id="attachment-title"
-            name="displayTitle"
-            defaultValue={attachment.data?.displayTitle ?? ""}
-            maxLength={255}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="attachment-tags">Tags</Label>
-          <Input
-            id="attachment-tags"
-            name="tags"
-            defaultValue={attachment.data?.tags.join(", ") ?? ""}
-            placeholder="research, reference"
-          />
-          <p className="text-xs text-muted-foreground">
-            Separate tags with commas. Up to 32 tags, 64 characters each.
-          </p>
-        </div>
+        <AttachmentFields
+          prefix="attachment"
+          displayTitle={attachment.data?.displayTitle}
+          tags={attachment.data?.tags}
+        />
         <div className="flex flex-wrap gap-2">
           <Button type="submit" size="sm">
             {pending

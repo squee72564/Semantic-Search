@@ -130,3 +130,39 @@ export function readFormText(form: FormData, name: string): string {
   const value = form.get(name);
   return typeof value === "string" ? value : "";
 }
+
+export function AttachmentFields({
+  prefix,
+  displayTitle,
+  tags,
+}: {
+  prefix: string;
+  displayTitle?: string | null | undefined;
+  tags?: string[] | undefined;
+}) {
+  return (
+    <>
+      <div className="space-y-2">
+        <Label htmlFor={`${prefix}-title`}>Workspace display title</Label>
+        <Input
+          id={`${prefix}-title`}
+          name="displayTitle"
+          defaultValue={displayTitle ?? ""}
+          maxLength={255}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`${prefix}-tags`}>Tags</Label>
+        <Input
+          id={`${prefix}-tags`}
+          name="tags"
+          defaultValue={tags?.join(", ") ?? ""}
+          placeholder="research, reference"
+        />
+        <p className="text-xs text-muted-foreground">
+          Separate tags with commas. Up to 32 tags, 64 characters each.
+        </p>
+      </div>
+    </>
+  );
+}

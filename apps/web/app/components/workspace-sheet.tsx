@@ -101,10 +101,12 @@ export function EditWorkspaceSheet({
   workspace,
   open,
   onOpenChange,
+  onCloseAutoFocus,
 }: {
   workspace: WorkspaceFormItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus?: ((event: Event) => void) | undefined;
 }) {
   const queryClient = useQueryClient();
   const mutation = useMutation({
@@ -144,6 +146,7 @@ export function EditWorkspaceSheet({
           isPending={mutation.isPending}
           onSubmit={handleSubmit}
           onCancel={handleCancel}
+          onCloseAutoFocus={onCloseAutoFocus}
         />
       ) : null}
     </Sheet>
@@ -159,6 +162,7 @@ function WorkspaceFormContent({
   isPending,
   onSubmit,
   onCancel,
+  onCloseAutoFocus,
 }: {
   title: string;
   description: string;
@@ -168,10 +172,11 @@ function WorkspaceFormContent({
   isPending: boolean;
   onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
   onCancel?: () => void;
+  onCloseAutoFocus?: ((event: Event) => void) | undefined;
 }) {
   const prefix = workspace ? "edit" : "create";
   return (
-    <SheetContent className="overflow-y-auto sm:max-w-lg">
+    <SheetContent onCloseAutoFocus={onCloseAutoFocus} className="overflow-y-auto sm:max-w-lg">
       <SheetHeader className="border-b pr-12">
         <SheetTitle>{title}</SheetTitle>
         <SheetDescription>{description}</SheetDescription>

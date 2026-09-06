@@ -6,6 +6,13 @@ type DocumentRoute = DocumentsRoute[":id"];
 type WorkspaceDocumentsRoute = ApiClient["workspaces"][":workspaceId"]["documents"];
 type AttachmentRoute = WorkspaceDocumentsRoute[":documentId"];
 
+export type WorkspaceDocumentsQueryInput = NonNullable<
+  Parameters<WorkspaceDocumentsRoute["$get"]>[0]
+>["query"];
+export type WorkspaceDocumentItem = Awaited<
+  ReturnType<Awaited<ReturnType<WorkspaceDocumentsRoute["$get"]>>["json"]>
+>["items"][number];
+
 export type DocumentsQueryInput = NonNullable<Parameters<DocumentsRoute["$get"]>[0]>["query"];
 export type DocumentMetadataInput = NonNullable<Parameters<DocumentRoute["$patch"]>[0]>["json"];
 export type AttachmentInput = NonNullable<Parameters<AttachmentRoute["$put"]>[0]>["json"];
@@ -19,6 +26,11 @@ export type UploadResponse = Awaited<
 
 export const documentQueryKeys = {
   all: ["documents"] as const,
+  workspace: (workspaceId: string) => ["documents", "workspace", workspaceId] as const,
+  workspaceList: (workspaceId: string, query: WorkspaceDocumentsQueryInput) =>
+    ["documents", "workspace", workspaceId, "list", query] as const,
+  membership: (workspaceId: string) =>
+    ["documents", "workspace", workspaceId, "membership"] as const,
   list: (query: DocumentsQueryInput) => ["documents", "list", query] as const,
   detail: (id: string) => ["documents", "detail", id] as const,
   attachment: (workspaceId: string, documentId: string) =>
@@ -192,4 +204,46 @@ export function detachDocumentMutation(api: ApiClient) {
 
 export function refreshDocuments(queryClient: QueryClient) {
   return queryClient.invalidateQueries({ queryKey: documentQueryKeys.all });
+}
+
+export function workspaceDocumentsQuery(
+  api: ApiClient,
+  workspaceId: string,
+  query: WorkspaceDocumentsQueryInput = {},
+) {
+  return queryOptions({
+    queryKey: documentQueryKeys.workspaceList(workspaceId, query),
+    queryFn: async ({ signal }) => {
+      const response = await api.workspaces[":workspaceId"].documents.$get(
+        { param: { workspaceId }, query },
+        { init: { signal } },
+      );
+      await assertSuccessfulResponse(response);
+      return response.json();
+    },
+  });
+}
+
+export function workspaceDocumentMembershipQuery(api: ApiClient, workspaceId: string) {
+  return queryOptions({
+    queryKey: documentQueryKeys.membership(workspaceId),
+    queryFn: async ({ signal }) => {
+      const ids: string[] = [];
+      let cursor: string | null = null;
+      do {
+        // eslint-disable-next-line no-await-in-loop -- each page supplies the next cursor.
+        const response = await api.workspaces[":workspaceId"].documents.$get(
+          { param: { workspaceId }, query: { limit: "100", ...(cursor ? { cursor } : {}) } },
+          { init: { signal } },
+        );
+        // eslint-disable-next-line no-await-in-loop -- validate before consuming the page.
+        await assertSuccessfulResponse(response);
+        // eslint-disable-next-line no-await-in-loop -- pagination depends on this response.
+        const page = await response.json();
+        ids.push(...page.items.map(({ document }) => document.id));
+        cursor = page.pageInfo.nextCursor;
+      } while (cursor);
+      return ids;
+    },
+  });
 }
