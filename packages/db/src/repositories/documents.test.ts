@@ -168,6 +168,69 @@ describe("Document repository", () => {
     expect(queries[0]?.parameters).toContain('{"tax","reference"}');
   });
 
+  it("searches title or filename while preserving canonical library constraints", async () => {
+    const cursorId = "00000000-0000-4000-8000-000000000006";
+    const { db, queries } = createRecordingDatabase([[documentRow()]]);
+
+    await createDocumentRepository(db).list({
+      cursor: { createdAt, id: cursorId },
+      limit: 10,
+      search: "  Coastal  ",
+      status: "uploaded",
+      tags: [" Tax ", "REFERENCE"],
+      userId,
+      workspaceId,
+    });
+
+    const query = queries[0];
+    expect(query?.sql).toContain(
+      `("documents"."title" ilike $3 escape '!' or "documents"."original_filename" ilike $4 escape '!')`,
+    );
+    expect(query?.sql).toContain('"documents"."user_id" = $1');
+    expect(query?.sql).toContain('"documents"."status" = $2');
+    expect(query?.sql).toContain('"documents"."created_at" <');
+    expect(query?.sql).toContain("exists (select");
+    expect(query?.sql).toContain('order by "documents"."created_at" desc, "documents"."id" desc');
+    expect(query?.parameters).toEqual([
+      userId,
+      "uploaded",
+      "%Coastal%",
+      "%Coastal%",
+      createdAt.toISOString(),
+      createdAt.toISOString(),
+      cursorId,
+      workspaceId,
+      '{"tax","reference"}',
+      11,
+    ]);
+  });
+
+  it.each([
+    ["100%_sure!", "%100!%!_sure!!%"],
+    [String.raw`path\file`, String.raw`%path\file%`],
+    ["editor's draft", "%editor's draft%"],
+  ])("parameterizes and escapes literal search %j", async (search, expectedPattern) => {
+    const { db, queries } = createRecordingDatabase([[]]);
+
+    await createDocumentRepository(db).list({ limit: 10, search, userId });
+
+    expect(queries[0]?.sql.match(/ ilike /g)).toHaveLength(2);
+    expect(queries[0]?.sql).toContain("escape '!'");
+    expect(queries[0]?.parameters).toContain(expectedPattern);
+    expect(queries[0]?.sql).not.toContain(search);
+  });
+
+  it("omits the search predicate for missing or blank input", async () => {
+    const { db, queries } = createRecordingDatabase([[], []]);
+    const repository = createDocumentRepository(db);
+
+    await repository.list({ limit: 10, userId });
+    await repository.list({ limit: 10, search: "   ", userId });
+
+    expect(queries).toHaveLength(2);
+    expect(queries.every((query) => !query.sql.includes(" ilike "))).toBe(true);
+  });
+
   it("returns the raw cursor for the last visible document", async () => {
     const secondId = "00000000-0000-4000-8000-000000000004";
     const thirdId = "00000000-0000-4000-8000-000000000005";

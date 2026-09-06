@@ -90,6 +90,12 @@ export const documentsQuerySchema = z
   .object({
     cursor: documentCursorSchema.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
+    search: z
+      .string()
+      .trim()
+      .max(255)
+      .transform((value) => value || undefined)
+      .optional(),
     status: z.enum(documentStatus.enumValues).optional(),
     tag: queryTagsSchema.optional(),
     workspaceId: z.uuid().optional(),

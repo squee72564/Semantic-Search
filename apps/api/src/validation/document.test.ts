@@ -36,6 +36,19 @@ describe("document validation", () => {
     });
   });
 
+  it("normalizes optional document search alongside existing filters", () => {
+    expect(
+      documentsQuerySchema.parse({ search: "  Coastal report  ", status: "ready", tag: " Tax " }),
+    ).toEqual({ limit: 20, search: "Coastal report", status: "ready", tag: ["tax"] });
+    expect(documentsQuerySchema.parse({})).toEqual({ limit: 20 });
+    expect(documentsQuerySchema.parse({ search: "" })).toEqual({ limit: 20 });
+    expect(documentsQuerySchema.parse({ search: "   " })).toEqual({ limit: 20 });
+    expect(documentsQuerySchema.parse({ search: "x".repeat(255) })).toMatchObject({
+      search: "x".repeat(255),
+    });
+    expect(documentsQuerySchema.safeParse({ search: ` ${"x".repeat(256)} ` }).success).toBe(false);
+  });
+
   it("validates list filters, UUIDs, and limits", () => {
     expect(documentsQuerySchema.parse({ limit: "10", status: "ready", workspaceId })).toEqual({
       limit: 10,

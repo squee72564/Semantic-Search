@@ -37,6 +37,7 @@ export interface UpdateDocumentMetadataInput {
 export interface ListDocumentsInput {
   cursor?: DocumentCursor | undefined;
   limit: number;
+  search?: string | undefined;
   status?: DocumentStatus | undefined;
   tags?: readonly string[] | undefined;
   userId: string;
@@ -250,6 +251,15 @@ export function createDocumentRepository(db: DatabaseExecutor): DocumentReposito
           )
         : undefined;
       const normalizedTags = normalizeTags(input.tags);
+      const search = input.search?.trim();
+      const pattern = search ? `%${search.replace(/[!%_]/g, "!$&")}%` : undefined;
+      const searchCondition =
+        pattern === undefined
+          ? undefined
+          : or(
+              sql`${documents.title} ilike ${pattern} escape '!'`,
+              sql`${documents.originalFilename} ilike ${pattern} escape '!'`,
+            );
       const attachmentFilter =
         input.workspaceId !== undefined || normalizedTags.length > 0
           ? exists(
@@ -277,6 +287,7 @@ export function createDocumentRepository(db: DatabaseExecutor): DocumentReposito
           and(
             eq(documents.userId, input.userId),
             input.status === undefined ? undefined : eq(documents.status, input.status),
+            searchCondition,
             cursorCondition,
             attachmentFilter,
           ),

@@ -153,7 +153,9 @@ describe("canonical document routes", () => {
     const repository = createDocumentRepository();
     const app = createTestApp({ documents: repository });
 
-    const listResponse = await app.request("/documents?limit=1&tag=Tax&tag=reference");
+    const listResponse = await app.request(
+      "/documents?limit=1&status=ready&tag=Tax&tag=reference&search=%20Coastal%20report%20",
+    );
     expect(listResponse.status).toBe(200);
     const listBody = await listResponse.json();
     expect(listBody).toMatchObject({
@@ -166,7 +168,8 @@ describe("canonical document routes", () => {
     expect(repository.list).toHaveBeenCalledWith({
       cursor: undefined,
       limit: 1,
-      status: undefined,
+      search: "Coastal report",
+      status: "ready",
       tags: ["tax", "reference"],
       userId,
       workspaceId: undefined,
@@ -209,9 +212,13 @@ describe("canonical document routes", () => {
         method: "PATCH",
       },
     );
+    const invalidSearch = await createTestApp({ documents: repository }).request(
+      `/documents?search=${"x".repeat(256)}`,
+    );
 
     expect(unauthenticated.status).toBe(401);
     expect(invalid.status).toBe(400);
+    expect(invalidSearch.status).toBe(400);
     expect(repository.list).not.toHaveBeenCalled();
     expect(repository.updateMetadata).not.toHaveBeenCalled();
   });

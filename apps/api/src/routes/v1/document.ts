@@ -107,10 +107,18 @@ export function createDocumentRoutes(
       zValidator("query", documentsQuerySchema, documentValidationHook),
       async (context) => {
         const user = getAuthenticatedUser(context);
-        const { cursor, limit, status, tag: tags, workspaceId } = context.req.valid("query");
+        const {
+          cursor,
+          limit,
+          search,
+          status,
+          tag: tags,
+          workspaceId,
+        } = context.req.valid("query");
         const page = await documentRepository.list({
           cursor,
           limit,
+          search,
           status,
           tags,
           userId: user.id,
