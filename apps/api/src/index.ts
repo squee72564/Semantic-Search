@@ -1,5 +1,5 @@
 import { createAuth } from "@repo/auth";
-import { createDatabase, createUnitOfWork, createScopedPersistence } from "@repo/db";
+import { createDatabase, createScopedPersistence } from "@repo/db";
 import { readApiEnv } from "@repo/env/api";
 import { createApp } from "./app.js";
 import { createLogger, flushLogger, type Logger } from "./lib/logger.js";
@@ -22,7 +22,7 @@ async function main(): Promise<void> {
     const { db, close } = createDatabase(env.DATABASE_URL);
     closeDatabase = close;
 
-    const persistence = createUnitOfWork(db, createApiRepositories);
+    const repositories = createApiRepositories(db);
     storage = createS3Storage({
       accessKeyId: env.S3_ACCESS_KEY_ID,
       secretAccessKey: env.S3_SECRET_ACCESS_KEY,
@@ -59,8 +59,8 @@ async function main(): Promise<void> {
 
     const app = createApp({
       auth,
-      documents: persistence.repositories.documents,
-      workspaces: persistence.repositories.workspaces,
+      documents: repositories.documents,
+      workspaces: repositories.workspaces,
       env,
       logger,
       uploadDocument,

@@ -313,6 +313,36 @@ describe("document upload application service", () => {
     expect(h.cleanup).toHaveBeenCalledOnce();
   });
 
+  it("preserves committed success and releases capacity when temporary cleanup fails", async () => {
+    const h = setup({ maxConcurrent: 1 });
+    const cleanupError = new Error("temporary file could not be removed");
+    h.cleanup.mockRejectedValueOnce(cleanupError);
+
+    await expect(h.execute(h.input)).resolves.toMatchObject({ reused: false });
+    expect(h.logger.error).toHaveBeenCalledWith(
+      { err: cleanupError, requestId: "request-test", stage: "temporary_cleanup" },
+      "failed to remove upload temporary file",
+    );
+    h.repositories.workspaces.findById.mockResolvedValue(null);
+    await expect(h.execute(h.input)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("returns confirmed publication when cancellation arrives during commit", async () => {
+    const h = setup();
+    const controller = new AbortController();
+    h.transaction.mockImplementation(async (operation, options) => {
+      const result = await operation(h.repositories, options.signal);
+      controller.abort();
+      return result;
+    });
+
+    await expect(h.execute({ ...h.input, signal: controller.signal })).resolves.toMatchObject({
+      reused: false,
+    });
+    expect(h.logger.warn).not.toHaveBeenCalled();
+    expect(h.cleanup).toHaveBeenCalledOnce();
+  });
+
   it("bounds concurrency, aborts preparation on deadline, and releases the slot", async () => {
     const h = setup({ maxConcurrent: 1, timeoutMs: 30 });
     h.input.prepare = (signal) =>
