@@ -29,6 +29,13 @@
       "when": 1788144499843,
       "tag": "0003_dizzy_maelstrom",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788750357942,
+      "tag": "0004_volatile_tombstone",
+      "breakpoints": true
     }
   ]
 }

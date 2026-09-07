@@ -54,6 +54,32 @@ export {
 } from "./repositories/documents.js";
 export * as authSchema from "./schema/auth.js";
 export {
+  conversations,
+  messageRole,
+  messages,
+  messageStatus,
+  retrievalRuns,
+  retrievalRunStatus,
+  type Conversation,
+  type Message,
+  type MessageErrorDetails,
+  type MessagePart,
+  type MessageRole,
+  type MessageStatus,
+  type ModelConfiguration,
+  type NewConversation,
+  type NewMessage,
+  type NewRetrievalRun,
+  type RetrievalQueryPlan,
+  type RetrievalRun,
+  type RetrievalRunErrorDetails,
+  type RetrievalRunResult,
+  type RetrievalRunStatus,
+  type RetrievalTrace,
+  type SourceMessagePart,
+  type TextMessagePart,
+} from "./schema/chat.js";
+export {
   documents,
   documentStatus,
   type Document,
